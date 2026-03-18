@@ -37,9 +37,9 @@ extern "C"
 
 #define DATA_AFTER_HEADER(x)   ( (void *)(&x[1]) )
 
-#define WHD_IOCTL_PACKET_TIMEOUT      (0xFFFFFFFF)
+#define WHD_IOCTL_PACKET_TIMEOUT      (5000)     /* IOCTL get buffer Timeout */
 #define WHD_IOCTL_TIMEOUT_MS          (3000)     /** Need to give enough time for coming out of Deep sleep (was 5000) */
-#define WHD_IOCTL_NO_OF_RETRIES       (2)        /** If the IOCTL reponse not received, do these number of retry **/
+#define WHD_IOCTL_NO_OF_RETRIES       (4)        /** If the IOCTL reponse not received, do these number of retry **/
 
 #define MSGBUF_IOCTL_RESP_TIMEOUT               msecs_to_jiffies(2000)
 
@@ -394,7 +394,7 @@ struct whd_msgbuf
     uint32_t cur_ioctlrespbuf;
     uint32_t max_eventbuf;
     uint32_t cur_eventbuf;
-    uint32_t reqid;
+    uint16_t reqid;
     struct whd_msgbuf_pktids *tx_pktids;
     struct whd_msgbuf_pktids *rx_pktids;
     struct whd_flowring *flow;

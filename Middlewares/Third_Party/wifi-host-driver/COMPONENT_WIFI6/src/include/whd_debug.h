@@ -32,9 +32,9 @@ extern "C"
 *                      Macros
 ******************************************************/
 #define WPRINT_ENABLE_WHD_ERROR
-#define WPRINT_ENABLE_WHD_ERROR_RETURN
-#define WPRINT_ENABLE_WHD_INFO
-//#define WPRINT_ENABLE_WHD_DEBUG
+/* #define WPRINT_ENABLE_WHD_ERROR_RETURN */
+/* #define WPRINT_ENABLE_WHD_INFO */
+/* #define WPRINT_ENABLE_WHD_DEBUG */
 
 #define WHD_ENABLE_STATS
 /*#define WHD_LOGGING_BUFFER_ENABLE*/

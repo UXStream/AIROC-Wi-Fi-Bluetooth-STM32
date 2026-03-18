@@ -1238,6 +1238,7 @@ typedef struct eventmsgs_ext
 #if defined(WHD_CSI_SUPPORT)
 #define IOVAR_STR_CSI                    "csi"
 #endif /* defined(WHD_CSI_SUPPORT) */
+#define IOVAR_STR_SCANMAC                "scanmac"
 
 /* This value derived from the above strings, which appear maxed out in the 20s */
 #define IOVAR_NAME_STR_MAX_SIZE          32
@@ -4555,6 +4556,42 @@ struct secure_sess_info {
 	uint8_t  write_seq[TLS_MAX_SEQUENCE_LENGTH];
 };
 
+typedef struct wl_scanmac {
+        uint16_t subcmd_id;       /* subcommand id */
+        uint16_t len;             /* total length of data[] */
+        uint8_t data[];           /* subcommand data */
+} wl_scanmac_t;
+
+/* subcommand ids */
+#define WL_SCANMAC_SUBCMD_ENABLE   0
+#define WL_SCANMAC_SUBCMD_BSSCFG   1   /* only GET supported */
+#define WL_SCANMAC_SUBCMD_CONFIG   2
+
+/** scanmac enable data struct */
+typedef struct wl_scanmac_enable {
+        uint8_t enable;   /* 1 - enable, 0 - disable */
+        uint8_t pad[3];   /* 4-byte struct alignment */
+} wl_scanmac_enable_t;
+
+/** scanmac bsscfg data struct */
+typedef struct wl_scanmac_bsscfg {
+        uint32_t bsscfg;  /* bsscfg index */
+} wl_scanmac_bsscfg_t;
+
+/** scanmac config data struct */
+typedef struct wl_scanmac_config {
+        struct ether_addr mac;  /* 6 bytes of MAC address or MAC prefix (i.e. OUI) */
+        struct ether_addr random_mask;  /* randomized bits on each scan */
+        uint16_t scan_bitmap;     /* scans to use this MAC address */
+        uint8_t pad[2];   /* 4-byte struct alignment */
+} wl_scanmac_config_t;
+
+/* scan bitmap */
+#define WL_SCANMAC_SCAN_UNASSOC         (0x01 << 0)     /* unassociated scans */
+#define WL_SCANMAC_SCAN_ASSOC_ROAM      (0x01 << 1)     /* associated roam scans */
+#define WL_SCANMAC_SCAN_ASSOC_PNO       (0x01 << 2)     /* associated PNO scans */
+#define WL_SCANMAC_SCAN_ASSOC_HOST      (0x01 << 3)     /* associated host scans */
+
 /* Offload Skip Bitmap */
 #define WL_OL_ARP         (1 << 0)
 #define WL_OL_ND          (1 << 1)
@@ -4567,7 +4604,7 @@ struct secure_sess_info {
 #define WL_OL_GTKOE       (1 << 8)
 #define WL_OL_WOWLPF      (1 << 9)
 
-#define OFFLOAD_FEATURE   WL_OL_ARP | WL_OL_TKO | WL_OL_WOWLPF
+#define OFFLOAD_FEATURE   WL_OL_ARP | WL_OL_ND | WL_OL_BDO | WL_OL_ICMP | WL_OL_TKO | WL_OL_DLTRO | WL_OL_PNO | WL_OL_KEEPALIVE | WL_OL_GTKOE | WL_OL_WOWLPF
 
 
 #ifdef __cplusplus
