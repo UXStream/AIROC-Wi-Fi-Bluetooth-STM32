@@ -47,7 +47,7 @@ extern "C" {
  */
 static inline void CY_HALT(void)
 {
-    __asm("    bkpt    1");
+//    __asm("    bkpt    1");
 }
 
 

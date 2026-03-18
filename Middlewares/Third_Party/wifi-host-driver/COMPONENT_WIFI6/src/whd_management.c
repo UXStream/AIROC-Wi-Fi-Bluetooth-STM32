@@ -571,6 +571,22 @@ whd_result_t whd_wifi_on(whd_driver_t whd_driver, whd_interface_t *ifpp)
     }
 #endif
 
+    /* Disabling scanmac randomisation for H1Combo
+     * Scanmac randomisation leads to probe requests with random mac address
+     * This causes WPS failure with some APs
+     */
+    if (wlan_chip_id == 55500)
+    {
+        if (whd_configure_scanmac_randomisation(ifp, WHD_FALSE) != WHD_SUCCESS)
+        {
+            WPRINT_WHD_ERROR( ("Could not disable scanmac randomisation for 55500\n") );
+        }
+        else
+        {
+            WPRINT_WHD_INFO( ("Disabled scanmac randomisation for 55500\n") );
+        }
+    }
+
 #if defined(COMPONENT_CAT5) && !defined(WHD_DISABLE_PDS)
     /* Unlocking the syspm sleep lock, as WHD initialization part is done */
     whd_pds_unlock_sleep(whd_driver);

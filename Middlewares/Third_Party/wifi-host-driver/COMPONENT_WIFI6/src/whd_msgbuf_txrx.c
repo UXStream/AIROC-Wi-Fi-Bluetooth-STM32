@@ -362,6 +362,7 @@ static int whd_msgbuf_send_ioctl(whd_interface_t ifp, uint32_t cmd, whd_buffer_t
         {
             retry++;
             /* This is to force read the commonring for any index update, in case, interrupt got missed */
+            (void)whd_hw_generateBt2WlDbInterruptApi(0, 0x01);
             whd_driver->force_rx_read = WHD_TRUE;
         }
         else

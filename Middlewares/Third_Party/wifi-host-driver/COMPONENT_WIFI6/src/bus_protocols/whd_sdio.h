@@ -271,7 +271,7 @@ extern "C" {
 #define SDIO_REG_DAR_D2H_MSG_0    ( 0x18002000 + 0x4C )
 #endif
 
-#define SDIO_BLHS_D2H_TIMEOUT_MS               500
+#define SDIO_BLHS_D2H_TIMEOUT_MS               1000
 
 /* Bootloader handshake flags - dongle to host */
 #define SDIO_BLHS_D2H_START                    (1 << 0)

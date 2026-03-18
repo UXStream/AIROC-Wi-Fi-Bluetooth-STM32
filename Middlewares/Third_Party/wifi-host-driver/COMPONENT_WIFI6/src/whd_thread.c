@@ -161,14 +161,6 @@ int8_t whd_thread_send_one_packet(whd_driver_t whd_driver)
     uint16_t local_id = 0;
     uint16_t prio_ring = 0;
 
-    /* Ensure the wlan backplane bus is up */
-    result = whd_ensure_wlan_bus_is_up(whd_driver);
-    if (result != WHD_SUCCESS)
-    {
-        whd_assert("Could not bring bus back up", 0 != 0);
-        return 0;
-    }
-
     /* Prefer to IOCTL Data than Tx Data */
     if (whd_driver->msgbuf->ioctl_queue)
     {
@@ -231,16 +223,6 @@ int8_t whd_thread_receive_one_packet(whd_driver_t whd_driver)
 
     return (int8_t)1;
 #else
-    whd_result_t result;
-
-    /* Ensure the wlan backplane bus is up */
-    result = whd_ensure_wlan_bus_is_up(whd_driver);
-    if (result != WHD_SUCCESS)
-    {
-        whd_assert("Could not bring bus back up", 0 != 0);
-        return 0;
-    }
-
     /* Send Received Information to the Rings */
     return whd_msgbuf_process_rx_packet(whd_driver);
 #endif /* PROTO_MSGBUF */
@@ -416,6 +398,17 @@ static void whd_thread_func(cy_thread_arg_t thread_input)
 
         /* Sleep till WLAN do something */
         whd_bus_wait_for_wlan_event(whd_driver, &thread_info->transceive_semaphore);
+
+#ifdef PROTO_MSGBUF
+        /* Ensure the wlan backplane bus is up */
+        status = whd_ensure_wlan_bus_is_up(whd_driver);
+        if (status != WHD_SUCCESS)
+        {
+            whd_assert("Could not bring bus back up", 0 != 0);
+            return;
+        }
+#endif
+
         WPRINT_WHD_DATA_LOG( ("whd Thread: Woke\n") );
     }
 

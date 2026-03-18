@@ -1709,8 +1709,18 @@ whd_wifi_csi(whd_interface_t ifp, void* user_data, char* params[], int argc,whd_
  *
  *  @return WHD_SUCCESS or WHD_UNKNOWN_INTERFACE
  */
-extern whd_result_t whd_wifi_deregister_ds_callback(whd_interface_t ifp, whd_ds_callback_t callback);
+extern whd_result_t
+whd_wifi_deregister_ds_callback(whd_interface_t ifp, whd_ds_callback_t callback);
 
+/** Function to configure scanmac randomisation
+ *
+ *  @param ifp                   Pointer to handle instance of whd interface
+ *  @param config                Value to configure scanmac randomisation (0/1)
+ *
+ *  @return WHD result code
+ */
+extern whd_result_t
+whd_configure_scanmac_randomisation(whd_interface_t ifp, whd_bool_t config);
 
 /* @} */
 
