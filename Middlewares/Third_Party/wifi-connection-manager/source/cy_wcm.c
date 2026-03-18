@@ -483,7 +483,7 @@ extern cy_rslt_t wpa3_supplicant_sae_start (uint8_t *ssid, uint8_t ssid_len, uin
 #define PING_RESPONSE_LEN                           (64)
 #define SCAN_BSSID_ARR_LENGTH                       (50)
 #define MAX_SCAN_RETRY                              (20)
-
+                                      
 /* Macro for 43012 statistics */
 #define WL_CNT_VER_30                               (30)
 #define WL_CNT_VER_10                               (10)
@@ -504,7 +504,7 @@ printf("%s: IOVAR buffer short!\n", __FUNCTION__); \
 #define _LTOH16_UA(cp) ((cp)[0] | ((cp)[1] << 8))
 
 /* TWT definitions */
-#define CY_WCM_TWT_SETUP_CMD                        TWT_SETUP_CMD_SUGGEST_TWT
+#define CY_WCM_TWT_SETUP_CMD                        TWT_SETUP_CMD_DEMAND_TWT
 #define CY_WCM_TWT_WAKE_DURATION_DEAFULT            (8)
 #define CY_WCM_TWT_WAKE_DURATION_IDLE_PROF_5G_6G    (2)
 #define CY_WCM_TWT_WAKE_DURATION_ACTIVE_PROF        (31)
@@ -512,8 +512,9 @@ printf("%s: IOVAR buffer short!\n", __FUNCTION__); \
 #define CY_WCM_TWT_MANTISSA                         (600)
 #define CY_WCM_TWT_EXPONENT                         (10)
 
-#define CY_WCM_TWT_MANTISSA_ACTIVE_PROF             (50000)
-#define CY_WCM_TWT_EXPONENT_ACTIVE_PROF             (0)
+// ~820ms sleep interval
+#define CY_WCM_TWT_MANTISSA_ACTIVE_PROF             (800)
+#define CY_WCM_TWT_EXPONENT_ACTIVE_PROF             (10)
 
 
 /******************************************************
@@ -905,6 +906,8 @@ cy_rslt_t cy_wcm_deinit()
         cy_rtos_deinit_timer(&sta_retry_timer);
         retry_backoff_timeout = DEFAULT_RETRY_BACKOFF_TIMEOUT_IN_MS;
     }
+    printf("SKA SKA SKA\n");
+    cyhal_gpio_write(CYBSP_WIFI_WL_REG_ON, false);
     cy_worker_thread_delete(&cy_wcm_worker_thread);
     is_wcm_initalized = false;
 
@@ -1643,7 +1646,7 @@ cy_rslt_t cy_wcm_connect_ap(cy_wcm_connect_params_t *connect_params, cy_wcm_ip_a
                     twt_params.exponent      = CY_WCM_TWT_EXPONENT;
                     twt_params.mantissa      = CY_WCM_TWT_MANTISSA;
                     twt_params.wake_time_h   = 0;
-                    twt_params.wake_time_l   = 0;
+                    twt_params.wake_time_l   = 0;//x01000000;
 
                     band = (bss_info.chanspec & 0xC000) >> 8;
                     cy_wcm_log_msg(CYLF_MIDDLEWARE, CY_LOG_DEBUG, "band : [0x%X]\n",band);
@@ -1669,8 +1672,11 @@ cy_rslt_t cy_wcm_connect_ap(cy_wcm_connect_params_t *connect_params, cy_wcm_ip_a
                             cy_wcm_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "iTWT Not supported for this capabilities\n");
                         }
 
+                        printf("whd_wifi_itwt_setup bad!\r\n");
                         cy_wcm_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "whd_wifi_itwt_setup failed %x\r\n", res);
                     }
+                    else
+                        printf("whd_wifi_itwt_setup OK!\r\n");
                 }
             }
 
@@ -4707,7 +4713,7 @@ cy_rslt_t cy_wcm_allow_low_power_mode(cy_wcm_powersave_mode_t mode)
     wlan_chip_id = whd_chip_get_chip_id(ifp->whd_driver);
 
     /* Disable WLAN PM/mpc for 43907 low power issue */
-    if ( (wlan_chip_id == CY_WCM_WLAN_CHIP_ID_43909) || (wlan_chip_id == CY_WCM_WLAN_CHIP_ID_43907) || (wlan_chip_id == CY_WCM_WLAN_CHIP_ID_54907) )
+    if ( 1)// (wlan_chip_id == CY_WCM_WLAN_CHIP_ID_43909) || (wlan_chip_id == CY_WCM_WLAN_CHIP_ID_43907) || (wlan_chip_id == CY_WCM_WLAN_CHIP_ID_54907) )
     {
         switch (mode)
         {

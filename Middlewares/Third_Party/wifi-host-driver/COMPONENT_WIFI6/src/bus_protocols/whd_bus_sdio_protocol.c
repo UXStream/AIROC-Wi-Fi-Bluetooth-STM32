@@ -1347,11 +1347,39 @@ whd_result_t whd_bus_sdio_poke_wlan(whd_driver_t whd_driver)
 
 whd_result_t whd_bus_sdio_wakeup(whd_driver_t whd_driver)
 {
+    struct whd_bus_priv *bus_priv = whd_driver->bus_priv;
+
+    if (bus_priv == NULL)
+    {
+        return WHD_UNFINISHED;
+    }
+
+    /* Re-enable SDIO clock from low-power mode */
+    __HAL_RCC_SDMMC1_CLK_ENABLE();
+
+    /* Restore SDIO peripheral to active state */
+    if (bus_priv->sdio_obj != NULL)
+    {
+        /* The SDIO peripheral should resume normal operation with clock enabled */
+        /* WL_HOST_WAKE interrupt will have triggered the wakeup sequence */
+    }
+
     return WHD_SUCCESS;
 }
 
 whd_result_t whd_bus_sdio_sleep(whd_driver_t whd_driver)
 {
+    struct whd_bus_priv *bus_priv = whd_driver->bus_priv;
+
+    if (bus_priv == NULL)
+    {
+        return WHD_UNFINISHED;
+    }
+
+    /* Disable SDIO clock to reduce power consumption */
+    /* The WLAN device will use WL_HOST_WAKE GPIO to signal when it needs service */
+    __HAL_RCC_SDMMC1_CLK_DISABLE();
+
     return WHD_SUCCESS;
 }
 
@@ -1697,6 +1725,10 @@ whd_result_t whd_bus_sdio_irq_enable(whd_driver_t whd_driver, whd_bool_t enable)
     return WHD_SUCCESS;
 }
 
+static void whd_bus_sdio_dummy_callback(void *arg, cyhal_gpio_event_t event)
+{
+}
+
 #if (CYHAL_API_VERSION >= 2)
 static void whd_bus_sdio_oob_irq_handler(void *arg, cyhal_gpio_event_t event)
 #else
@@ -1748,7 +1780,11 @@ whd_result_t whd_bus_sdio_unregister_oob_intr(whd_driver_t whd_driver)
 {
     const whd_oob_config_t *config = &whd_driver->bus_priv->sdio_config.oob_config;
 #if (CYHAL_API_VERSION >= 2)
-    cyhal_gpio_register_callback(config->host_oob_pin, NULL);
+    static cyhal_gpio_callback_data_t cbdata = {0};
+    cbdata.callback = whd_bus_sdio_dummy_callback;
+    cbdata.callback_arg = whd_driver;
+
+    cyhal_gpio_register_callback(config->host_oob_pin, &cbdata);
 #else
     cyhal_gpio_register_irq(config->host_oob_pin, config->intr_priority, NULL, NULL);
 #endif /* (CYHAL_API_VERSION >= 2) */

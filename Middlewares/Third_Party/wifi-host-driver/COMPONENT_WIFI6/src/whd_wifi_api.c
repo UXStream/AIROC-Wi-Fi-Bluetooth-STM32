@@ -77,7 +77,7 @@
 #define DEFAULT_JOIN_SEMAPHORE_TIMEOUT   (1000)
 #define DEFAULT_JOIN_ATTEMPT_TIMEOUT     (13000)  /* Overall join attempt timeout in milliseconds.(FW will do "full scan"[~2.8 seconds] + "psk-to-pmk"[2.x seconds] + "join"[5 seconds timer in FW]) */
 #define DEFAULT_JOIN_RESPONSE_TIMEOUT    (3000)   /* Probe response timeout in milliseconds */
-#define DEFAULT_EAPOL_KEY_PACKET_TIMEOUT (3000)   /* Timeout when waiting for EAPOL key packet M1 or M3 in milliseconds.*/
+#define DEFAULT_EAPOL_KEY_PACKET_TIMEOUT (5000)   /* Timeout when waiting for EAPOL key packet M1 or M3 in milliseconds.*/
                                                   /* Some APs may be slow to provide M1 and 1000 ms is not long enough for edge of cell. */
 #ifndef DEFAULT_PM2_SLEEP_RET_TIME
 #define DEFAULT_PM2_SLEEP_RET_TIME   (200)

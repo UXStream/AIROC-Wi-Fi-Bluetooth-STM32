@@ -1340,11 +1340,39 @@ whd_result_t whd_bus_sdio_poke_wlan(whd_driver_t whd_driver)
 
 whd_result_t whd_bus_sdio_wakeup(whd_driver_t whd_driver)
 {
+    struct whd_bus_priv *bus_priv = whd_driver->bus_priv;
+
+    if (bus_priv == NULL)
+    {
+        return WHD_UNFINISHED;
+    }
+
+    /* Re-enable SDIO clock from low-power mode */
+    __HAL_RCC_SDIO_CLK_ENABLE();
+
+    /* Restore SDIO peripheral to active state */
+    if (bus_priv->sdio_obj != NULL)
+    {
+        /* The SDIO peripheral should resume normal operation with clock enabled */
+        /* WL_HOST_WAKE interrupt will have triggered the wakeup sequence */
+    }
+
     return WHD_SUCCESS;
 }
 
 whd_result_t whd_bus_sdio_sleep(whd_driver_t whd_driver)
 {
+    struct whd_bus_priv *bus_priv = whd_driver->bus_priv;
+
+    if (bus_priv == NULL)
+    {
+        return WHD_UNFINISHED;
+    }
+
+    /* Disable SDIO clock to reduce power consumption */
+    /* The WLAN device will use WL_HOST_WAKE GPIO to signal when it needs service */
+    __HAL_RCC_SDIO_CLK_DISABLE();
+
     return WHD_SUCCESS;
 }
 

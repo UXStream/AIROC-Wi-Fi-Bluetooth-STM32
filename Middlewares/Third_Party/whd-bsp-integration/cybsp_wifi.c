@@ -529,7 +529,7 @@ static cy_rslt_t _cybsp_wifi_sdio_init_bus2(cyhal_sdio_t* obj)
 
         whd_sdio_config_t whd_sdio_config =
         {
-            .sdio_1bit_mode        = WHD_FALSE,
+            .sdio_1bit_mode        = WHD_TRUE,
             .high_speed_sdio_clock = WHD_FALSE,
             .oob_config            = OOB_CONFIG
         };
