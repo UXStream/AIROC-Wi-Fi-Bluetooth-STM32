@@ -4713,7 +4713,7 @@ cy_rslt_t cy_wcm_allow_low_power_mode(cy_wcm_powersave_mode_t mode)
     wlan_chip_id = whd_chip_get_chip_id(ifp->whd_driver);
 
     /* Disable WLAN PM/mpc for 43907 low power issue */
-    if ( 1)// (wlan_chip_id == CY_WCM_WLAN_CHIP_ID_43909) || (wlan_chip_id == CY_WCM_WLAN_CHIP_ID_43907) || (wlan_chip_id == CY_WCM_WLAN_CHIP_ID_54907) )
+    if ((wlan_chip_id == CY_WCM_WLAN_CHIP_ID_43909) || (wlan_chip_id == CY_WCM_WLAN_CHIP_ID_43907) || (wlan_chip_id == CY_WCM_WLAN_CHIP_ID_54907) )
     {
         switch (mode)
         {

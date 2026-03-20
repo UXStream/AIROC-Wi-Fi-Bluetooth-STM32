@@ -1345,33 +1345,27 @@ whd_result_t whd_bus_sdio_poke_wlan(whd_driver_t whd_driver)
     return whd_bus_write_backplane_value(whd_driver, SDIO_TO_SB_MAILBOX(whd_driver), (uint8_t)4, SMB_DEV_INT);
 }
 
+extern int do_vobb;
+
 whd_result_t whd_bus_sdio_wakeup(whd_driver_t whd_driver)
 {
-    (void)whd_driver;
-
-#if defined(__HAL_RCC_SDMMC1_CLK_ENABLE)
-    __HAL_RCC_SDMMC1_CLK_ENABLE();
-#elif defined(__HAL_RCC_SDMMC2_CLK_ENABLE)
+    /* Re-enable SDMMC2 clock from low-power mode */
+#if defined(__HAL_RCC_SDMMC2_CLK_ENABLE)
     __HAL_RCC_SDMMC2_CLK_ENABLE();
-#elif defined(__HAL_RCC_SDIO_CLK_ENABLE)
-    __HAL_RCC_SDIO_CLK_ENABLE();
 #endif
-
     return WHD_SUCCESS;
 }
 
 whd_result_t whd_bus_sdio_sleep(whd_driver_t whd_driver)
 {
-    (void)whd_driver;
-
-#if defined(__HAL_RCC_SDMMC1_CLK_DISABLE)
-    __HAL_RCC_SDMMC1_CLK_DISABLE();
-#elif defined(__HAL_RCC_SDMMC2_CLK_DISABLE)
+    if (!do_vobb)
+    {
+        return WHD_SUCCESS;
+    }
+    /* Disable SDMMC2 clock to reduce power consumption */
+#if defined(__HAL_RCC_SDMMC2_CLK_DISABLE)
     __HAL_RCC_SDMMC2_CLK_DISABLE();
-#elif defined(__HAL_RCC_SDIO_CLK_DISABLE)
-    __HAL_RCC_SDIO_CLK_DISABLE();
 #endif
-
     return WHD_SUCCESS;
 }
 

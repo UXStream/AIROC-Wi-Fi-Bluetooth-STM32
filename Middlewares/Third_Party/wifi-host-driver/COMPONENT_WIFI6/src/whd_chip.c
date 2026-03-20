@@ -876,7 +876,8 @@ whd_result_t whd_allow_wlan_bus_to_sleep(whd_driver_t whd_driver)
                 {
                     return WHD_SUCCESS;
                 }
-                return whd_kso_enable(whd_driver, WHD_FALSE);
+                whd_kso_enable(whd_driver, WHD_FALSE);
+                return whd_bus_sleep(whd_driver);
             }
         }
         else
@@ -1021,6 +1022,8 @@ whd_result_t whd_ensure_wlan_bus_is_up(whd_driver_t whd_driver)
     {
         return WHD_SUCCESS;
     }
+    whd_bus_wakeup(whd_driver);
+
 
     if ( (wlan_chip_id == 43362) || (wlan_chip_id == 4334) )
     {
