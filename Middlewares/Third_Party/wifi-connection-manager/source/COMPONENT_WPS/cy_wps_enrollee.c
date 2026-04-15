@@ -534,6 +534,18 @@ static cy_rslt_t cy_wps_registrar_event_handler(cy_wps_agent_t* workspace, cy_ev
         return CY_RSLT_WPS_UNPROCESSED;
     }
 
+    if (workspace->current_main_stage == CY_WPS_CLOSING_EAP) {
+        if (message->event_type == CY_EVENT_EAPOL_PACKET_RECEIVED) {
+            cy_wcm_log_msg(CYLF_MIDDLEWARE, CY_LOG_DEBUG, "WPS Handshake complete (packet received during closing)\r\n");
+            whd_buffer_release(workspace->interface->whd_driver,
+                message->data.packet, WHD_NETWORK_RX);
+        } else if (message->event_type == CY_EVENT_TIMER_TIMEOUT) {
+            cy_wcm_log_msg(CYLF_MIDDLEWARE, CY_LOG_DEBUG, "WPS Handshake complete (timeout during closing)\r\n");
+        }
+        workspace->wps_result = CY_RSLT_WPS_COMPLETE;
+        return CY_RSLT_SUCCESS;
+    }
+
     switch (message->event_type) {
     case CY_EVENT_EAPOL_PACKET_RECEIVED:
         eapol_packet = (cy_eapol_packet_t*)whd_buffer_get_current_piece_data_pointer(
