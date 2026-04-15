@@ -277,6 +277,31 @@ cy_rslt_t cy_lwip_dhcp_server_stop(cy_lwip_dhcp_server_t* server)
     return res;
 }
 
+bool cy_lwip_dhcp_server_get_cached_client_ipv4(const uint8_t client_mac[6], uint32_t* client_ipv4_be)
+{
+    bool found = false;
+    cy_lwip_mac_addr_t lookup_mac;
+    cy_lwip_ip_address_t cached_ip;
+
+    if ((client_mac == NULL) || (client_ipv4_be == NULL) || !is_dhcp_server_started) {
+        return false;
+    }
+
+    memcpy(lookup_mac.octet, client_mac, sizeof(lookup_mac.octet));
+
+    if (cy_rtos_get_mutex(&dhcp_mutex, CY_DHCP_MAX_MUTEX_WAIT_TIME_MS) != CY_RSLT_SUCCESS) {
+        return false;
+    }
+
+    found = get_client_ip_address_from_cache(&lookup_mac, &cached_ip);
+    if (found) {
+        *client_ipv4_be = htonl(cached_ip.ip.v4);
+    }
+
+    (void)cy_rtos_set_mutex(&dhcp_mutex);
+    return found;
+}
+
 /**
  *  Implements a very simple DHCP server.
  *

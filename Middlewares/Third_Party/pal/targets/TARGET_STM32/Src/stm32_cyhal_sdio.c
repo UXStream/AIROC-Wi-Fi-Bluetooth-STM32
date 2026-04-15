@@ -207,7 +207,7 @@ cy_rslt_t cyhal_sdio_init(cyhal_sdio_t* obj, cyhal_gpio_t cmd, cyhal_gpio_t clk,
     /* Default SDMMC peripheral configuration for initialization */
     obj->hsd->Init.ClockEdge           = SDMMC_CLOCK_EDGE_RISING;
     obj->hsd->Init.ClockPowerSave      = SDMMC_CLOCK_POWER_SAVE_DISABLE;
-    obj->hsd->Init.BusWide             = SDMMC_BUS_WIDE_4B;
+    obj->hsd->Init.BusWide             = SDMMC_BUS_WIDE_1B;
     obj->hsd->Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_DISABLE;
 
     /* Init Clock should be less or equal to 400Khz */

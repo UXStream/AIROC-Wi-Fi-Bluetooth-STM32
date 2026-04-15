@@ -55,6 +55,9 @@
 #ifdef COMPONENT_MBEDTLS
 #include "entropy_poll.h"
 #endif
+/* STM32 hardware RNG for WPS nonce/key generation */
+#include "rng.h"
+extern RNG_HandleTypeDef hrng;
 
 /******************************************************
  *                      Macros
@@ -80,8 +83,8 @@
 #define WPS_ENCRYPTION_BLOCK_SIZE    (16)
 #define WPS_AUTHENTICATOR_LEN        (8)
 
-#define WPS_LENGTH_FIELD_MASK        (0x02)
-#define WPS_MORE_FRAGMENTS_MASK      (0x01)
+#define WPS_LENGTH_FIELD_MASK (0x01) /* bit0 = Length Field present (wpa_supplicant convention) */
+#define WPS_MORE_FRAGMENTS_MASK (0x02) /* bit1 = More Fragments (wpa_supplicant convention) */
 #define WPS_MESSAGE_TYPE_M1          (0x04)
 #ifndef TRUE
 #define TRUE   (1)
@@ -345,32 +348,23 @@ uint32_t cy_host_get_timer( void* workspace )
 
 cy_rslt_t cy_host_random_bytes( void* buffer, size_t buffer_length, size_t* output_length )
 {
-#ifndef COMPONENT_4390X
-#ifdef COMPONENT_MBEDTLS
-    int result = 0;
-    size_t length;
+    /* Use STM32 hardware TRNG (hrng initialised by MX_RNG_Init in rng.c). */
+    uint8_t tmp[4];
+    size_t filled = 0;
+    uint8_t* out = (uint8_t*)buffer;
 
-    result = mbedtls_hardware_poll(NULL, (unsigned char*)buffer, buffer_length, &length);
-    if(result != 0)
-    {
-        cy_wcm_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "mbedtls_hardware_poll failed \r\n");
-        return CY_RSLT_WPS_ERROR;
-    }
-
-    *output_length = length;
-#endif
-#else
-    /* 43907 kits does not have TRNG module. Get the random
-     * number from wifi-mw-core internal PRNG API. */
-    cy_rslt_t result;
-    result = cy_prng_get_random(buffer, buffer_length);
-    if(result != CY_RSLT_SUCCESS)
-    {
-        cy_wcm_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "cy_prng_get_random failed \r\n");
-        return result;
+    while (filled < buffer_length) {
+        if (HAL_RNG_GenerateRandomNumber(&hrng, (uint32_t*)(void*)tmp) != HAL_OK) {
+            cy_wcm_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "HAL_RNG_GenerateRandomNumber failed\r\n");
+            return CY_RSLT_WPS_ERROR;
+        }
+        size_t chunk = buffer_length - filled;
+        if (chunk > 4u)
+            chunk = 4u;
+        memcpy(out + filled, tmp, chunk);
+        filled += chunk;
     }
     *output_length = buffer_length;
-#endif
     return CY_RSLT_SUCCESS;
 }
 
@@ -432,6 +426,7 @@ static cy_rslt_t cy_wps_common_event_handler(cy_wps_agent_t* workspace, cy_event
 
             cy_wcm_log_msg(CYLF_MIDDLEWARE, CY_LOG_DEBUG, "Process Packet Fragmentation\r\n");
             result = cy_wps_process_packet_fragmentation(workspace, message->data.packet, &wps_packet_data, &wps_packet_data_size);
+            printf("WPS: frag_result=0x%lx sz=%u\r\n", (unsigned long)result, (unsigned)wps_packet_data_size);
             if (result == CY_RSLT_WPS_IN_PROGRESS)
             {
                 result = CY_RSLT_SUCCESS;
@@ -452,6 +447,11 @@ static cy_rslt_t cy_wps_common_event_handler(cy_wps_agent_t* workspace, cy_event
                 goto return_with_packet_and_maybe_fragment;
             }
             wps_packet_data_size     = (uint16_t)(wps_packet_data_size - (wps_packet_data - (uint8_t*)packet_header));
+
+            printf("WPS: eap code=%d type=%d sz=%u sub=%d flags=0x%02x\r\n",
+                packet_header->eap.code, packet_header->eap.type,
+                (unsigned)wps_packet_data_size, workspace->current_sub_stage,
+                (unsigned)packet_header->eap_expanded.flags);
 
             /* Check if it is a packet we care about */
             if ( packet_header->eap.type != CY_EAP_TYPE_WPS )
@@ -479,10 +479,16 @@ static cy_rslt_t cy_wps_common_event_handler(cy_wps_agent_t* workspace, cy_event
             /* Find the message type TLV */
             if ( tlv_read_value( WPS_ID_MSG_TYPE, wps_packet_data, wps_packet_data_size, &message_type, 1, TLV_UINT8 ) != TLV_SUCCESS )
             {
+                printf("WPS: msg type TLV not found sz=%u\r\n", (unsigned)wps_packet_data_size);
                 cy_wcm_log_msg(CYLF_MIDDLEWARE, CY_LOG_DEBUG, "Message type couldn't be found\r\n");
                 result = CY_RSLT_WPS_ERROR_MESSAGE_MISSING_TLV;
                 goto return_with_packet_and_maybe_fragment;
             }
+            printf("WPS: msg_type=%d lookahead_valid=%d cur_valid=%d sub=%d\r\n",
+                message_type,
+                wps_states[workspace->agent_type][workspace->current_sub_stage + 1].valid_message_type,
+                wps_states[workspace->agent_type][workspace->current_sub_stage].valid_message_type,
+                workspace->current_sub_stage);
 
             // Reverse registrar mode check
             if ( workspace->in_reverse_registrar_mode != 0 && message_type == WPS_ID_MESSAGE_M2D )
@@ -514,7 +520,11 @@ static cy_rslt_t cy_wps_common_event_handler(cy_wps_agent_t* workspace, cy_event
                     workspace->last_received_id = packet_header->eap.id;
                 }
 
+                printf("WPS: process_msg type=%d sub=%d crypto=0x%lx\r\n",
+                    message_type, workspace->current_sub_stage,
+                    (unsigned long)workspace->available_crypto_material);
                 result = cy_wps_process_message_content( workspace, wps_packet_data, wps_packet_data_size, wps_states[workspace->agent_type][workspace->current_sub_stage].tlv_mask );
+                printf("WPS: process_msg result=0x%lx crypto_after=0x%lx\r\n", (unsigned long)result, (unsigned long)workspace->available_crypto_material);
                 if ( result != CY_RSLT_SUCCESS )
                 {
                     cy_wcm_log_msg(CYLF_MIDDLEWARE, CY_LOG_DEBUG, "WPS: Processing message error\r\n");
@@ -567,6 +577,20 @@ static cy_rslt_t cy_wps_common_event_handler(cy_wps_agent_t* workspace, cy_event
             }
             else
             {
+                if (message_type == WPS_ID_MESSAGE_NACK) {
+                    uint16_t ce = 0;
+                    tlv_read_value(WPS_ID_CONFIG_ERROR, wps_packet_data, wps_packet_data_size, &ce, sizeof(ce), TLV_UINT16);
+                    printf("WPS: NACK config_error=%u(0x%04x)\r\n", (unsigned)cy_hton16(ce), (unsigned)cy_hton16(ce));
+                    {
+                        uint8_t* d = wps_packet_data;
+                        uint32_t n = wps_packet_data_size < 66u ? wps_packet_data_size : 66u;
+                        printf("WPS NACK raw[");
+                        for (uint32_t i = 0; i < n; i++) {
+                            printf("%02x", d[i]);
+                        }
+                        printf("]\r\n");
+                    }
+                }
                 result = CY_RSLT_WPS_ERROR_INCORRECT_MESSAGE;
                 goto return_with_packet_and_maybe_fragment;
             }
@@ -610,6 +634,10 @@ static cy_rslt_t cy_wps_common_event_handler(cy_wps_agent_t* workspace, cy_event
     if (workspace->current_main_stage == CY_WPS_IN_WPS_HANDSHAKE)
     {
         /* Send the packet for the current state */
+        printf("WPS: sending outgoing sub=%d out_type=%d last_id=%d\r\n",
+            workspace->current_sub_stage,
+            wps_states[workspace->agent_type][workspace->current_sub_stage].outgoing_message_type,
+            workspace->last_received_id);
         whd_host_buffer_get( workspace->interface->whd_driver, &outgoing_packet, WHD_NETWORK_TX, 1024 + WHD_LINK_HEADER, true );
         whd_buffer_add_remove_at_front( workspace->interface->whd_driver, &outgoing_packet, WHD_LINK_HEADER );
         packet_header = (cy_wps_msg_packet_t*) whd_buffer_get_current_piece_data_pointer( workspace->interface->whd_driver, outgoing_packet );
@@ -1984,7 +2012,7 @@ static cy_rslt_t cy_wps_send_wsc_nack(cy_wps_agent_t* workspace, uint16_t config
     return cy_wps_send_basic_packet( workspace, WPS_ID_MESSAGE_NACK, config_error );
 }
 
-void cy_wps_send_eapol_packet(cy_packet_t packet, cy_wps_agent_t* workspace, cy_eapol_packet_type_t type, whd_mac_t* their_mac_address, uint16_t content_size )
+void cy_wps_send_eapol_packet_orig(cy_packet_t packet, cy_wps_agent_t* workspace, cy_eapol_packet_type_t type, whd_mac_t* their_mac_address, uint16_t content_size)
 {
     cy_host_workspace_t* wps_host_workspace = (cy_host_workspace_t*) workspace->wps_host_workspace;
     cy_eapol_packet_t* header = (cy_eapol_packet_t*) whd_buffer_get_current_piece_data_pointer( workspace->interface->whd_driver, packet );
@@ -1996,6 +2024,24 @@ void cy_wps_send_eapol_packet(cy_packet_t packet, cy_wps_agent_t* workspace, cy_
     header->eapol.length  = cy_hton16( content_size );
     whd_buffer_set_size( wps_host_workspace->interface->whd_driver, packet, (uint16_t)( content_size + sizeof(cy_eapol_packet_header_t) ));
     whd_network_send_ethernet_data( wps_host_workspace->interface, packet );
+}
+
+void cy_wps_send_eapol_packet(cy_packet_t packet, cy_wps_agent_t* workspace, cy_eapol_packet_type_t type, whd_mac_t* their_mac_address, uint16_t content_size)
+{
+    cy_eapol_packet_t* header = (cy_eapol_packet_t*)whd_buffer_get_current_piece_data_pointer(workspace->interface->whd_driver, packet);
+    printf("WPS TX: eapol_type=%d len=%u dst=%02x:%02x:%02x:%02x:%02x:%02x\r\n",
+        type, content_size,
+        their_mac_address->octet[0], their_mac_address->octet[1], their_mac_address->octet[2],
+        their_mac_address->octet[3], their_mac_address->octet[4], their_mac_address->octet[5]);
+    if (type == CY_EAP_PACKET) {
+        cy_eap_packet_t* he = (cy_eap_packet_t*)header;
+        cy_eap_header_t* eap = &he->eap;
+        printf("  EAP code=%d id=%d type=%d len=%u\r\n", eap->code, eap->id, eap->type, cy_hton16(eap->length));
+        if (eap->type == CY_EAP_TYPE_IDENTITY) {
+            printf("  Identity: %.*s\r\n", cy_hton16(eap->length) - 5, he->data);
+        }
+    }
+    cy_wps_send_eapol_packet_orig(packet, workspace, type, their_mac_address, content_size);
 }
 
 static cy_rslt_t cy_wps_send_done( cy_wps_agent_t* workspace )

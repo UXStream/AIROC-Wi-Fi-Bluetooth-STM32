@@ -67,7 +67,7 @@
 #define EAPOL_HEADER_SPACE                (sizeof(ether_header_t) + sizeof(eapol_header_t))
 #define WL_CHANSPEC_CHAN_MASK             0x00ff
 #define WL_CHANSPEC_BAND_2G               0x2000
-#define WPS_THREAD_STACK_SIZE             (4*1024)
+#define WPS_THREAD_STACK_SIZE (12 * 1024)
 #define AUTHORIZED_MAC_LIST_LENGTH        (1)
 #define ACTIVE_WPS_WORKSPACE_ARRAY_SIZE   (1)
 
@@ -602,7 +602,14 @@ void cy_wps_thread_main( cy_thread_arg_t arg )
 
 
     cy_wcm_log_msg(CYLF_MIDDLEWARE, CY_LOG_DEBUG, "Starting WPS Enrollee\r\n");
-    cy_wps_enrollee_start( workspace, workspace->interface );
+#ifdef WCM_ENABLE_WPS_REGISTRAR
+    if (workspace->agent_type == CY_WPS_REGISTRAR_AGENT) {
+        cy_wps_registrar_start(workspace);
+    } else
+#endif
+    {
+        cy_wps_enrollee_start(workspace, workspace->interface);
+    }
 
     while ( workspace->wps_result == CY_RSLT_WPS_IN_PROGRESS )
     {
@@ -717,6 +724,9 @@ void cy_wps_thread_main( cy_thread_arg_t arg )
 static void cy_network_process_wps_eapol_data( /*@only@*/ whd_interface_t interface, whd_buffer_t buffer )
 {
     cy_wps_agent_t* workspace = IF_TO_WORKSPACE( interface );
+    uint8_t* d = whd_buffer_get_current_piece_data_pointer(interface->whd_driver, buffer);
+    printf("WPS RX: eapol role=%d ws=%p eapol_type=%d\r\n", (int)interface->role, (void*)workspace,
+        d ? (int)d[15] : -1); /* byte 15 = eapol.type: 0=key,1=start,2=logoff,3=eap */
     if ( workspace != NULL )
     {
         /* Don't queue the packet unless the WPS thread is running */

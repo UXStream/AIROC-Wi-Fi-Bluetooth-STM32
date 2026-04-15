@@ -166,6 +166,16 @@ cy_rslt_t cy_lwip_dhcp_server_start(cy_lwip_dhcp_server_t* server, cy_network_in
  */
 cy_rslt_t cy_lwip_dhcp_server_stop(cy_lwip_dhcp_server_t *server);
 
+/**
+ *  Lookup a cached DHCPv4 lease by client MAC address.
+ *
+ * @param[in]  client_mac          6-byte client MAC address.
+ * @param[out] client_ipv4_be      Client IPv4 address in network byte order.
+ *
+ * @return true if a matching lease is cached; false otherwise.
+ */
+bool cy_lwip_dhcp_server_get_cached_client_ipv4(const uint8_t client_mac[6], uint32_t* client_ipv4_be);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

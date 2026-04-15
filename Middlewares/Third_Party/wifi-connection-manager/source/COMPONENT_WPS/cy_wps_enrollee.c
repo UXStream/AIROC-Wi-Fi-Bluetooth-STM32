@@ -60,6 +60,8 @@
 
 #define DEFAULT_REQ_TO_ENROLL    1
 
+#define VNDR_IE_BEACON_FLAG 0x01
+#define VNDR_IE_PRBRSP_FLAG 0x02
 #define VNDR_IE_ASSOCREQ_FLAG    0x20
 #define VNDR_IE_PRBREQ_FLAG      0x10
 
@@ -90,6 +92,7 @@ typedef cy_rslt_t (*cy_wps_enrollee_action_t)( cy_wps_agent_t* workspace, whd_in
  ******************************************************/
 
 static cy_rslt_t    cy_wps_enrollee_event_handler  (cy_wps_agent_t* workspace, cy_event_message_t* message);
+static cy_rslt_t cy_wps_registrar_event_handler(cy_wps_agent_t* workspace, cy_event_message_t* message);
 static cy_rslt_t    cy_wps_send_eapol_start        ( cy_wps_agent_t *workspace, whd_interface_t interface );
 static cy_rslt_t    cy_wps_send_identity           ( cy_wps_agent_t* workspace, whd_interface_t interface );
 static cy_rslt_t    cy_wps_find_and_join_ap        ( cy_wps_agent_t* workspace, whd_interface_t interface );
@@ -500,3 +503,221 @@ static cy_rslt_t cy_create_wps_probe_ie( cy_wps_agent_t* workspace )
 
     return CY_RSLT_SUCCESS;
 }
+
+#ifdef WCM_ENABLE_WPS_REGISTRAR
+/*
+ * WPS Registrar event handler.
+ *
+ * Handles the EAP bootstrapping phase before the common WPS handshake:
+ *   EAPOL-Start → EAP-Request/Identity → EAP-Response/Identity → EAP-Request/WSC-Start
+ * After sending WSC-Start, transitions to CY_WPS_IN_WPS_HANDSHAKE and the common
+ * handler (cy_wps_common_event_handler) takes over for M1-M8.
+ */
+static cy_rslt_t cy_wps_registrar_event_handler(cy_wps_agent_t* workspace, cy_event_message_t* message)
+{
+    cy_eapol_packet_t* eapol_packet;
+    cy_eap_header_t* eap_hdr;
+    cy_wps_msg_packet_t* wps_packet;
+    cy_packet_t tx_packet;
+    uint16_t aligned_length;
+    uint32_t aligned_vendor_type;
+
+    /* While in WPS handshake, increment the EAP request ID then let the common handler process */
+    if (workspace->current_main_stage == CY_WPS_IN_WPS_HANDSHAKE) {
+        if (message->event_type == CY_EVENT_EAPOL_PACKET_RECEIVED) {
+            wps_packet = (cy_wps_msg_packet_t*)whd_buffer_get_current_piece_data_pointer(
+                workspace->interface->whd_driver, message->data.packet);
+            /* Store the received EAP id; the common handler's ++last_received_id
+             * is the single source of the +1 for the next outgoing EAP-Request. */
+            workspace->last_received_id = wps_packet->eap.id;
+        }
+        return CY_RSLT_WPS_UNPROCESSED;
+    }
+
+    switch (message->event_type) {
+    case CY_EVENT_EAPOL_PACKET_RECEIVED:
+        eapol_packet = (cy_eapol_packet_t*)whd_buffer_get_current_piece_data_pointer(
+            workspace->interface->whd_driver, message->data.packet);
+
+        if (eapol_packet->eapol.type == CY_EAPOL_START) {
+            cy_eap_packet_t* id_req;
+
+            /* Copy enrollee's MAC address from Ethernet source field */
+            memcpy(&workspace->their_data.mac_address,
+                eapol_packet->ethernet.ether_shost,
+                sizeof(whd_mac_t));
+
+            /* Send EAP-Request/Identity */
+            whd_host_buffer_get(workspace->interface->whd_driver, &tx_packet,
+                WHD_NETWORK_TX, sizeof(cy_eap_packet_t) + (sizeof(REGISTRAR_ID_STRING) - 1) + WHD_LINK_HEADER, true);
+            whd_buffer_add_remove_at_front(workspace->interface->whd_driver,
+                &tx_packet, WHD_LINK_HEADER);
+            id_req = (cy_eap_packet_t*)whd_buffer_get_current_piece_data_pointer(
+                workspace->interface->whd_driver, tx_packet);
+
+            workspace->last_received_id = 1;
+            id_req->eap.code = CY_EAP_CODE_REQUEST;
+            id_req->eap.id = workspace->last_received_id;
+            CY_WPS_HOST_WRITE_16_BE(&aligned_length, sizeof(cy_eap_header_t) + (sizeof(REGISTRAR_ID_STRING) - 1));
+            id_req->eap.length = aligned_length;
+            id_req->eap.type = CY_EAP_TYPE_IDENTITY;
+            memcpy(id_req->data, REGISTRAR_ID_STRING, sizeof(REGISTRAR_ID_STRING) - 1);
+
+            cy_host_start_timer(workspace->wps_host_workspace, WPS_EAPOL_PACKET_TIMEOUT);
+            cy_wps_send_eapol_packet(tx_packet, workspace, CY_EAP_PACKET,
+                &workspace->their_data.mac_address, sizeof(cy_eap_header_t) + (sizeof(REGISTRAR_ID_STRING) - 1));
+
+            whd_buffer_release(workspace->interface->whd_driver,
+                message->data.packet, WHD_NETWORK_RX);
+        } else if (eapol_packet->eapol.type == CY_EAP_PACKET) {
+            eap_hdr = (cy_eap_header_t*)eapol_packet->data;
+
+            if (eap_hdr->code == CY_EAP_CODE_RESPONSE && eap_hdr->type == CY_EAP_TYPE_IDENTITY) {
+                cy_wps_msg_packet_header_t* wsc_hdr;
+
+                /* Advance EAP id */
+                workspace->last_received_id = (uint8_t)(eap_hdr->id + 1);
+
+                /* Send EAP-Request/WPS/WSC-Start */
+                whd_host_buffer_get(workspace->interface->whd_driver, &tx_packet,
+                    WHD_NETWORK_TX,
+                    sizeof(cy_wps_msg_packet_header_t) + WHD_LINK_HEADER, true);
+                whd_buffer_add_remove_at_front(workspace->interface->whd_driver,
+                    &tx_packet, WHD_LINK_HEADER);
+                wsc_hdr = (cy_wps_msg_packet_header_t*)whd_buffer_get_current_piece_data_pointer(
+                    workspace->interface->whd_driver, tx_packet);
+
+                wsc_hdr->eap.code = CY_EAP_CODE_REQUEST;
+                wsc_hdr->eap.id = workspace->last_received_id;
+                CY_WPS_HOST_WRITE_16_BE(&aligned_length,
+                    sizeof(cy_eap_header_t) + sizeof(cy_eap_expanded_header_t));
+                wsc_hdr->eap.length = aligned_length;
+                wsc_hdr->eap.type = CY_EAP_TYPE_WPS;
+                memcpy(wsc_hdr->eap_expanded.vendor_id, WFA_VENDOR_EXT_ID, 3);
+                CY_WPS_HOST_WRITE_32_BE(&aligned_vendor_type, 1);
+                wsc_hdr->eap_expanded.vendor_type = aligned_vendor_type;
+                wsc_hdr->eap_expanded.op_code = 1; /* WSC_START */
+                wsc_hdr->eap_expanded.flags = 0;
+
+                cy_host_start_timer(workspace->wps_host_workspace, WPS_EAPOL_PACKET_TIMEOUT);
+                cy_wps_send_eapol_packet(tx_packet, workspace, CY_EAP_PACKET,
+                    &workspace->their_data.mac_address,
+                    sizeof(cy_eap_header_t) + sizeof(cy_eap_expanded_header_t));
+
+                /* From here the common WPS handshake handler takes over */
+                workspace->current_main_stage = CY_WPS_IN_WPS_HANDSHAKE;
+
+                whd_buffer_release(workspace->interface->whd_driver,
+                    message->data.packet, WHD_NETWORK_RX);
+            } else {
+                whd_buffer_release(workspace->interface->whd_driver,
+                    message->data.packet, WHD_NETWORK_RX);
+                return CY_RSLT_WPS_UNPROCESSED;
+            }
+        } else {
+            whd_buffer_release(workspace->interface->whd_driver,
+                message->data.packet, WHD_NETWORK_RX);
+            return CY_RSLT_WPS_UNPROCESSED;
+        }
+        break;
+
+    case CY_EVENT_TIMER_TIMEOUT:
+        /* Let the common handler report the timeout error */
+        return CY_RSLT_WPS_UNPROCESSED;
+
+    default:
+        return CY_RSLT_WPS_UNPROCESSED;
+    }
+
+    return CY_RSLT_SUCCESS;
+}
+
+void cy_wps_registrar_init(cy_wps_agent_t* workspace)
+{
+    workspace->event_handler = cy_wps_registrar_event_handler;
+    workspace->registrar_data = &workspace->my_data;
+    workspace->enrollee_data = &workspace->their_data;
+    workspace->available_crypto_material |= CY_WPS_CRYPTO_MATERIAL_REGISTRAR_NONCE | CY_WPS_CRYPTO_MATERIAL_REGISTRAR_PUBLIC_KEY;
+    workspace->current_main_stage = CY_WPS_INITIALISING;
+    workspace->current_sub_stage = CY_WPS_SENDING_PUBLIC_KEYS;
+}
+
+void cy_wps_registrar_start(cy_wps_agent_t* workspace)
+{
+    cy_wps_registrar_init(workspace);
+    /* The AP is already running; just reset state and wait for EAPOL frames. */
+    workspace->identity_request_received_count = 0;
+    /* Advertise that a WPS registrar is active in the beacon/probe response. */
+    cy_wps_advertise_registrar(workspace, 1);
+}
+
+void cy_wps_registrar_reset(cy_wps_agent_t* workspace)
+{
+    /* Re-initialise handshake state. Crypto will be re-generated by the caller. */
+    cy_wps_registrar_init(workspace);
+}
+
+/*
+ * Update the AP beacon and probe response WPS IE to advertise (or withdraw)
+ * the selected registrar state. Android's wpa_supplicant requires
+ * Selected Registrar=TRUE + matching Device Password ID in the beacon before
+ * it will send M1 in PBC mode.
+ *
+ * selected_registrar = 1 : assert Selected Registrar (WPS session starting)
+ * selected_registrar = 0 : deassert (WPS session ended / not active)
+ *
+ * The allocated IE is stored in workspace->ie.registrar.beacon (= common[2])
+ * so the generic cy_wps_deinit_workspace() loop removes it automatically.
+ */
+cy_rslt_t cy_wps_advertise_registrar(cy_wps_agent_t* workspace, uint8_t selected_registrar)
+{
+    uint8_t version = WPS_VERSION;
+    uint8_t sc_state = 0x01; /* Not configured */
+    uint8_t* iter;
+
+    /* Remove any previously installed beacon IE first */
+    if (workspace->ie.registrar.beacon.data != NULL) {
+        cy_wps_host_remove_vendor_ie((uint32_t)workspace->interface,
+            workspace->ie.registrar.beacon.data,
+            workspace->ie.registrar.beacon.length,
+            workspace->ie.registrar.beacon.packet_mask);
+        cy_wps_free(workspace->ie.registrar.beacon.data);
+        workspace->ie.registrar.beacon.data = NULL;
+    }
+
+    if (selected_registrar == 0) {
+        return CY_RSLT_SUCCESS;
+    }
+
+    workspace->ie.registrar.beacon.data = cy_wps_malloc("wps", sizeof(template_wps2_beacon_ie_t));
+    if (workspace->ie.registrar.beacon.data == NULL) {
+        return CY_RSLT_WPS_ERROR_OUT_OF_MEMORY;
+    }
+
+    iter = workspace->ie.registrar.beacon.data;
+    iter = tlv_write_value(iter, WPS_ID_VERSION, WPS_ID_VERSION_S, &version, TLV_UINT8);
+    iter = tlv_write_value(iter, WPS_ID_SC_STATE, WPS_ID_SC_STATE_S, &sc_state, TLV_UINT8);
+    iter = tlv_write_value(iter, WPS_ID_SEL_REGISTRAR, WPS_ID_SEL_REGISTRAR_S, &selected_registrar, TLV_UINT8);
+    iter = tlv_write_value(iter, WPS_ID_DEVICE_PWD_ID, WPS_ID_DEVICE_PWD_ID_S, &workspace->device_password_id, TLV_UINT16);
+    iter = tlv_write_value(iter, WPS_ID_SEL_REG_CFG_METHODS, WPS_ID_SEL_REG_CFG_METHODS_S, &workspace->device_details->config_methods, TLV_UINT16);
+
+    if (workspace->my_data.supported_version >= WPS_VERSION2) {
+        cy_vendor_ext_t* vendor_ext = (cy_vendor_ext_t*)tlv_write_header(iter, WPS_ID_VENDOR_EXT, sizeof(cy_vendor_ext_t));
+        memcpy(vendor_ext->vendor_id, WFA_VENDOR_EXT_ID, 3);
+        vendor_ext->subid_version2.type = WPS_WFA_SUBID_VERSION2;
+        vendor_ext->subid_version2.length = 1;
+        vendor_ext->subid_version2.data = workspace->my_data.supported_version;
+        iter += sizeof(tlv16_header_t) + sizeof(cy_vendor_ext_t);
+    }
+
+    workspace->ie.registrar.beacon.length = (uint16_t)(iter - workspace->ie.registrar.beacon.data);
+    workspace->ie.registrar.beacon.packet_mask = VNDR_IE_BEACON_FLAG | VNDR_IE_PRBRSP_FLAG;
+
+    cy_wps_host_add_vendor_ie((uint32_t)workspace->interface,
+        workspace->ie.registrar.beacon.data,
+        workspace->ie.registrar.beacon.length,
+        workspace->ie.registrar.beacon.packet_mask);
+
+    return CY_RSLT_SUCCESS;
+}
+#endif /* WCM_ENABLE_WPS_REGISTRAR */
