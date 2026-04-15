@@ -231,86 +231,75 @@ static const uint16_t agent_specific_tlv_id[2][6] =
     }
 };
 
-const cy_wps_state_machine_state_t wps_states[2][4] =
-{
-    [CY_WPS_ENROLLEE_AGENT] =
-    {
+const cy_wps_state_machine_state_t wps_states[2][4] = {
+    [CY_WPS_ENROLLEE_AGENT] = {
         // Sending M1, Receiving M2
-        [CY_WPS_SENDING_PUBLIC_KEYS] =
-        {
-            .valid_message_type    = WPS_ID_MESSAGE_M2,
+        [CY_WPS_SENDING_PUBLIC_KEYS] = {
+            .valid_message_type = WPS_ID_MESSAGE_M2,
             .outgoing_message_type = WPS_ID_MESSAGE_M1,
-            .tlv_mask              = (CY_WPS_TLV_VERSION | CY_WPS_TLV_MSG_TYPE | CY_WPS_TLV_ENROLLEE_NONCE | CY_WPS_TLV_REGISTRAR_NONCE | CY_WPS_TLV_UUID_R | CY_WPS_TLV_PUBLIC_KEY | CY_WPS_TLV_AUTH_TYPE_FLAGS | CY_WPS_TLV_ENCR_TYPE_FLAGS | CY_WPS_TLV_AUTHENTICATOR),
-            .encrypted_tlv_mask    = 0,
-            .packet_generator      = (cy_wps_packet_generator_t)cy_wps_write_nonce,
+            .tlv_mask = (CY_WPS_TLV_VERSION | CY_WPS_TLV_MSG_TYPE | CY_WPS_TLV_ENROLLEE_NONCE | CY_WPS_TLV_REGISTRAR_NONCE | CY_WPS_TLV_UUID_R | CY_WPS_TLV_PUBLIC_KEY | CY_WPS_TLV_AUTH_TYPE_FLAGS | CY_WPS_TLV_ENCR_TYPE_FLAGS | CY_WPS_TLV_AUTHENTICATOR),
+            .encrypted_tlv_mask = 0,
+            .packet_generator = (cy_wps_packet_generator_t)cy_wps_write_nonce,
         },
         // Sending M3, Receiving M4
-        [CY_WPS_SENDING_SECRET_HASHES] =
-        {
-            .valid_message_type    = WPS_ID_MESSAGE_M4,
+        [CY_WPS_SENDING_SECRET_HASHES] = {
+            .valid_message_type = WPS_ID_MESSAGE_M4,
             .outgoing_message_type = WPS_ID_MESSAGE_M3,
-            .tlv_mask              = (CY_WPS_TLV_VERSION | CY_WPS_TLV_MSG_TYPE | CY_WPS_TLV_ENROLLEE_NONCE | CY_WPS_TLV_R_HASH1 | CY_WPS_TLV_R_HASH2 | CY_WPS_TLV_ENCRYPTION_SETTINGS | CY_WPS_TLV_AUTHENTICATOR),
-            .encrypted_tlv_mask    = CY_WPS_TLV_R_SNONCE1,
-            .packet_generator      = (cy_wps_packet_generator_t)cy_wps_write_hashes,
+            .tlv_mask = (CY_WPS_TLV_VERSION | CY_WPS_TLV_MSG_TYPE | CY_WPS_TLV_ENROLLEE_NONCE | CY_WPS_TLV_R_HASH1 | CY_WPS_TLV_R_HASH2 | CY_WPS_TLV_ENCRYPTION_SETTINGS | CY_WPS_TLV_AUTHENTICATOR),
+            .encrypted_tlv_mask = CY_WPS_TLV_R_SNONCE1,
+            .packet_generator = (cy_wps_packet_generator_t)cy_wps_write_hashes,
         },
         // Sending M5, Receiving M6
-        [CY_WPS_SENDING_SECRET_NONCE1] =
-        {
-            .valid_message_type    = WPS_ID_MESSAGE_M6,
+        [CY_WPS_SENDING_SECRET_NONCE1] = {
+            .valid_message_type = WPS_ID_MESSAGE_M6,
             .outgoing_message_type = WPS_ID_MESSAGE_M5,
-            .tlv_mask              = (CY_WPS_TLV_VERSION | CY_WPS_TLV_MSG_TYPE | CY_WPS_TLV_ENROLLEE_NONCE | CY_WPS_TLV_ENCRYPTION_SETTINGS | CY_WPS_TLV_AUTHENTICATOR),
-            .encrypted_tlv_mask    = CY_WPS_TLV_R_SNONCE2,
-            .packet_generator      = (cy_wps_packet_generator_t)cy_wps_write_secret1,
+            .tlv_mask = (CY_WPS_TLV_VERSION | CY_WPS_TLV_MSG_TYPE | CY_WPS_TLV_ENROLLEE_NONCE | CY_WPS_TLV_ENCRYPTION_SETTINGS | CY_WPS_TLV_AUTHENTICATOR),
+            .encrypted_tlv_mask = CY_WPS_TLV_R_SNONCE2,
+            .packet_generator = (cy_wps_packet_generator_t)cy_wps_write_secret1,
         },
         // Sending M7, Receiving M8
-        [CY_WPS_SENDING_SECRET_NONCE2] =
-        {
-            .valid_message_type    = WPS_ID_MESSAGE_M8,
+        [CY_WPS_SENDING_SECRET_NONCE2] = {
+            .valid_message_type = WPS_ID_MESSAGE_M8,
             .outgoing_message_type = WPS_ID_MESSAGE_M7,
-            .tlv_mask              = (CY_WPS_TLV_VERSION | CY_WPS_TLV_MSG_TYPE | CY_WPS_TLV_ENROLLEE_NONCE | CY_WPS_TLV_ENCRYPTION_SETTINGS | CY_WPS_TLV_AUTHENTICATOR),
-            .encrypted_tlv_mask    = CY_WPS_TLV_CREDENTIAL | CY_WPS_TLV_SSID | CY_WPS_TLV_AUTH_TYPE | CY_WPS_TLV_ENCR_TYPE | CY_WPS_TLV_NW_KEY | CY_WPS_TLV_MAC_ADDR ,
-            .packet_generator      = (cy_wps_packet_generator_t)cy_wps_write_secret2,
+            .tlv_mask = (CY_WPS_TLV_VERSION | CY_WPS_TLV_MSG_TYPE | CY_WPS_TLV_ENROLLEE_NONCE | CY_WPS_TLV_ENCRYPTION_SETTINGS | CY_WPS_TLV_AUTHENTICATOR),
+            .encrypted_tlv_mask = CY_WPS_TLV_CREDENTIAL | CY_WPS_TLV_SSID | CY_WPS_TLV_AUTH_TYPE | CY_WPS_TLV_ENCR_TYPE | CY_WPS_TLV_NW_KEY | CY_WPS_TLV_MAC_ADDR,
+            .packet_generator = (cy_wps_packet_generator_t)cy_wps_write_secret2,
         },
     },
 
 #ifdef WCM_ENABLE_WPS_REGISTRAR
-    [CY_WPS_REGISTRAR_AGENT] =
-    {
+    [CY_WPS_REGISTRAR_AGENT] = {
         // Receiving M1, Sending M2
-        [CY_WPS_SENDING_PUBLIC_KEYS] =
-        {
-            .valid_message_type    = WPS_ID_MESSAGE_M1,
+        [CY_WPS_SENDING_PUBLIC_KEYS] = {
+            .valid_message_type = WPS_ID_MESSAGE_M1,
             .outgoing_message_type = WPS_ID_MESSAGE_M2,
-            .tlv_mask              = (CY_WPS_TLV_VERSION | CY_WPS_TLV_MSG_TYPE | CY_WPS_TLV_ENROLLEE_NONCE | CY_WPS_TLV_PUBLIC_KEY | CY_WPS_TLV_MAC_ADDR | CY_WPS_TLV_AUTH_TYPE_FLAGS | CY_WPS_TLV_ENCR_TYPE_FLAGS ),
-            .encrypted_tlv_mask    = 0,
-            .packet_generator      = (cy_wps_packet_generator_t)cy_wps_write_nonce,
+            .tlv_mask = (CY_WPS_TLV_VERSION | CY_WPS_TLV_MSG_TYPE | CY_WPS_TLV_ENROLLEE_NONCE | CY_WPS_TLV_PUBLIC_KEY | CY_WPS_TLV_MAC_ADDR | CY_WPS_TLV_AUTH_TYPE_FLAGS | CY_WPS_TLV_ENCR_TYPE_FLAGS),
+            .encrypted_tlv_mask = 0,
+            .packet_generator = (cy_wps_packet_generator_t)cy_wps_write_nonce,
         },
         // Receiving M3, Sending M4
-        [CY_WPS_SENDING_SECRET_HASHES] =
-        {
-            .valid_message_type    = WPS_ID_MESSAGE_M3,
+        [CY_WPS_SENDING_SECRET_HASHES] = {
+            .valid_message_type = WPS_ID_MESSAGE_M3,
             .outgoing_message_type = WPS_ID_MESSAGE_M4,
-            .tlv_mask              = (CY_WPS_TLV_VERSION | CY_WPS_TLV_MSG_TYPE | CY_WPS_TLV_REGISTRAR_NONCE | CY_WPS_TLV_E_HASH1 | CY_WPS_TLV_E_HASH2  | CY_WPS_TLV_AUTHENTICATOR),
-            .encrypted_tlv_mask    = 0,
-            .packet_generator      = (cy_wps_packet_generator_t)cy_wps_write_hashes,
+            .tlv_mask = (CY_WPS_TLV_VERSION | CY_WPS_TLV_MSG_TYPE | CY_WPS_TLV_REGISTRAR_NONCE | CY_WPS_TLV_E_HASH1 | CY_WPS_TLV_E_HASH2 | CY_WPS_TLV_AUTHENTICATOR),
+            .encrypted_tlv_mask = 0,
+            .packet_generator = (cy_wps_packet_generator_t)cy_wps_write_hashes,
         },
         // Receiving M5, Sending M6
-        [CY_WPS_SENDING_SECRET_NONCE1] =
-        {
-            .valid_message_type    = WPS_ID_MESSAGE_M5,
+        [CY_WPS_SENDING_SECRET_NONCE1] = {
+            .valid_message_type = WPS_ID_MESSAGE_M5,
             .outgoing_message_type = WPS_ID_MESSAGE_M6,
-            .tlv_mask              = (CY_WPS_TLV_VERSION | CY_WPS_TLV_MSG_TYPE | CY_WPS_TLV_REGISTRAR_NONCE | CY_WPS_TLV_ENCRYPTION_SETTINGS | CY_WPS_TLV_AUTHENTICATOR),
-            .encrypted_tlv_mask    = CY_WPS_TLV_E_SNONCE1,
-            .packet_generator      = (cy_wps_packet_generator_t)cy_wps_write_secret2,
+            .tlv_mask = (CY_WPS_TLV_VERSION | CY_WPS_TLV_MSG_TYPE | CY_WPS_TLV_REGISTRAR_NONCE | CY_WPS_TLV_ENCRYPTION_SETTINGS | CY_WPS_TLV_AUTHENTICATOR),
+            .encrypted_tlv_mask = CY_WPS_TLV_E_SNONCE1,
+            .packet_generator = (cy_wps_packet_generator_t)cy_wps_write_secret2,
         },
         // Receiving M7, Sending M8
-        [CY_WPS_SENDING_CREDENTIALS] =
-        {
-            .valid_message_type    = WPS_ID_MESSAGE_M7,
+        [CY_WPS_SENDING_CREDENTIALS] = {
+            .valid_message_type = WPS_ID_MESSAGE_M7,
             .outgoing_message_type = WPS_ID_MESSAGE_M8,
-            .tlv_mask              = (CY_WPS_TLV_VERSION | CY_WPS_TLV_MSG_TYPE | CY_WPS_TLV_REGISTRAR_NONCE | CY_WPS_TLV_ENCRYPTION_SETTINGS | CY_WPS_TLV_AUTHENTICATOR),
-            .encrypted_tlv_mask    = CY_WPS_TLV_E_SNONCE2,
-            .packet_generator      = (cy_wps_packet_generator_t)cy_wps_write_credentials,
+            .tlv_mask = (CY_WPS_TLV_VERSION | CY_WPS_TLV_MSG_TYPE | CY_WPS_TLV_REGISTRAR_NONCE | CY_WPS_TLV_ENCRYPTION_SETTINGS | CY_WPS_TLV_AUTHENTICATOR),
+            .encrypted_tlv_mask = CY_WPS_TLV_E_SNONCE2,
+            .packet_generator = (cy_wps_packet_generator_t)cy_wps_write_credentials,
         },
     },
 #endif
@@ -440,6 +429,28 @@ static cy_rslt_t cy_wps_common_event_handler(cy_wps_agent_t* workspace, cy_event
             cy_wcm_log_msg(CYLF_MIDDLEWARE, CY_LOG_DEBUG, "Processing received packet\r\n");
 
             packet_header            = (cy_wps_msg_packet_t*)wps_packet_data;
+            if (workspace->agent_type == CY_WPS_REGISTRAR_AGENT) {
+                bool peer_mac_is_zero = true;
+                for (size_t i = 0; i < sizeof(workspace->their_data.mac_address.octet); ++i) {
+                    if (workspace->their_data.mac_address.octet[i] != 0u) {
+                        peer_mac_is_zero = false;
+                        break;
+                    }
+                }
+
+                if (peer_mac_is_zero) {
+                    memcpy(&workspace->their_data.mac_address, &packet_header->ethernet.ether_shost, sizeof(whd_mac_t));
+                    workspace->available_crypto_material |= CY_WPS_CRYPTO_MATERIAL_ENROLLEE_MAC_ADDRESS;
+                    cy_wcm_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO,
+                        "WPS registrar latched peer MAC from source: %02x:%02x:%02x:%02x:%02x:%02x\r\n",
+                        (unsigned int)workspace->their_data.mac_address.octet[0],
+                        (unsigned int)workspace->their_data.mac_address.octet[1],
+                        (unsigned int)workspace->their_data.mac_address.octet[2],
+                        (unsigned int)workspace->their_data.mac_address.octet[3],
+                        (unsigned int)workspace->their_data.mac_address.octet[4],
+                        (unsigned int)workspace->their_data.mac_address.octet[5]);
+                }
+            }
             wps_packet_data          = cy_get_wps_packet_data( packet_header );
             if (wps_packet_data == NULL)
             {
@@ -486,7 +497,9 @@ static cy_rslt_t cy_wps_common_event_handler(cy_wps_agent_t* workspace, cy_event
             }
             printf("WPS: msg_type=%d lookahead_valid=%d cur_valid=%d sub=%d\r\n",
                 message_type,
-                wps_states[workspace->agent_type][workspace->current_sub_stage + 1].valid_message_type,
+                (workspace->current_sub_stage + 1u < (uint8_t)(sizeof(wps_states[workspace->agent_type]) / sizeof(wps_states[workspace->agent_type][0])))
+                    ? wps_states[workspace->agent_type][workspace->current_sub_stage + 1u].valid_message_type
+                    : 0u,
                 wps_states[workspace->agent_type][workspace->current_sub_stage].valid_message_type,
                 workspace->current_sub_stage);
 
@@ -505,8 +518,7 @@ static cy_rslt_t cy_wps_common_event_handler(cy_wps_agent_t* workspace, cy_event
             }
 
             /* Check if we are a Registrar and this message is the reply for our last send packet. If so we can move to next sub-stage */
-            if ( ( workspace->agent_type == CY_WPS_REGISTRAR_AGENT ) && ( message_type == wps_states[workspace->agent_type][workspace->current_sub_stage + 1].valid_message_type ) )
-            {
+            if ((workspace->agent_type == CY_WPS_REGISTRAR_AGENT) && (workspace->current_sub_stage + 1u < (uint8_t)(sizeof(wps_states[workspace->agent_type]) / sizeof(wps_states[workspace->agent_type][0]))) && (message_type == wps_states[workspace->agent_type][workspace->current_sub_stage + 1u].valid_message_type)) {
                 ++workspace->current_sub_stage;
             }
 
@@ -1071,7 +1083,7 @@ static cy_rslt_t cy_wps_process_message_content( cy_wps_agent_t* workspace, uint
 
             case WPS_ID_PUBLIC_KEY:
                 parsed_tlvs |= CY_WPS_TLV_PUBLIC_KEY;
-                workspace->available_crypto_material |= (workspace->agent_type == CY_WPS_ENROLLEE_AGENT) ? CY_WPS_CRYPTO_MATERIAL_ENROLLEE_PUBLIC_KEY : CY_WPS_CRYPTO_MATERIAL_REGISTRAR_PUBLIC_KEY;
+                workspace->available_crypto_material |= (workspace->agent_type == CY_WPS_ENROLLEE_AGENT) ? CY_WPS_CRYPTO_MATERIAL_REGISTRAR_PUBLIC_KEY : CY_WPS_CRYPTO_MATERIAL_ENROLLEE_PUBLIC_KEY;
                 memcpy( &workspace->their_data.public_key, tlv->data, sizeof(cy_public_key_t) );
                 break;
 
@@ -1104,9 +1116,11 @@ static cy_rslt_t cy_wps_process_message_content( cy_wps_agent_t* workspace, uint
         }
     }
 
-    if ( parsed_tlvs != tlv_mask )
-    {
-        cy_wcm_log_msg(CYLF_MIDDLEWARE, CY_LOG_DEBUG, "Mismatched TLVs. %lu != %lu\r\n", parsed_tlvs, tlv_mask);
+    if ((parsed_tlvs & tlv_mask) != tlv_mask) {
+        printf("WPS TLV mismatch parsed=0x%08lx required=0x%08lx missing=0x%08lx\r\n",
+            (unsigned long)parsed_tlvs,
+            (unsigned long)tlv_mask,
+            (unsigned long)(tlv_mask & ~parsed_tlvs));
         return CY_RSLT_WPS_ERROR_MESSAGE_TLV_MASK_MISMATCH;
     }
 
@@ -1136,6 +1150,8 @@ static cy_rslt_t cy_wps_process_message_content( cy_wps_agent_t* workspace, uint
     /* HMAC validation (if we have the auth key ) */
     else if ( (workspace->available_crypto_material & CY_WPS_CRYPTO_MATERIAL_AUTH_KEY) != 0 )
     {
+        uint32_t hmac_input_length;
+
         /* Check if we need to take into account the copy of M1. Only valid when processing M2 (Enrollee only) */
         if (workspace->m1_copy != NULL)
         {
@@ -1144,7 +1160,8 @@ static cy_rslt_t cy_wps_process_message_content( cy_wps_agent_t* workspace, uint
             workspace->m1_copy        = NULL;
             workspace->m1_copy_length = 0;
         }
-        cy_sha2_hmac_update( &workspace->hmac, content, content_length - sizeof(tlv16_header_t) - WPS_AUTHENTICATOR_LEN );
+        hmac_input_length = (uint32_t)((uint8_t*)authenticator - content - sizeof(tlv16_header_t));
+        cy_sha2_hmac_update(&workspace->hmac, content, hmac_input_length);
         cy_sha2_hmac_finish( &workspace->hmac, (unsigned char*) &hmac_output );
         if ( memcmp( &hmac_output, authenticator, WPS_AUTHENTICATOR_LEN ) != 0 )
         {
@@ -1595,6 +1612,25 @@ static uint8_t* cy_wps_write_credentials(cy_wps_agent_t* workspace, uint8_t* ite
     memset(&credential, 0, sizeof(cy_wps_internal_credential_t));
     cy_wps_host_retrieve_credential(workspace->wps_host_workspace, &credential);
 
+    cy_wcm_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO,
+        "WPS M8 credential input: ssid_len=%u ssid='%.*s' key_len=%u ap_mac=%02x:%02x:%02x:%02x:%02x:%02x enrollee_mac=%02x:%02x:%02x:%02x:%02x:%02x\r\n",
+        (unsigned int)credential.ssid_length,
+        (int)credential.ssid_length,
+        (const char*)credential.ssid,
+        (unsigned int)credential.network_key_length,
+        (unsigned int)workspace->my_data.mac_address.octet[0],
+        (unsigned int)workspace->my_data.mac_address.octet[1],
+        (unsigned int)workspace->my_data.mac_address.octet[2],
+        (unsigned int)workspace->my_data.mac_address.octet[3],
+        (unsigned int)workspace->my_data.mac_address.octet[4],
+        (unsigned int)workspace->my_data.mac_address.octet[5],
+        (unsigned int)workspace->their_data.mac_address.octet[0],
+        (unsigned int)workspace->their_data.mac_address.octet[1],
+        (unsigned int)workspace->their_data.mac_address.octet[2],
+        (unsigned int)workspace->their_data.mac_address.octet[3],
+        (unsigned int)workspace->their_data.mac_address.octet[4],
+        (unsigned int)workspace->their_data.mac_address.octet[5]);
+
     // Not all WPS v1.0 enrollees understand mixed modes of authentication or encryption so minimize the choice
     if ( workspace->their_data.supported_version < WPS_VERSION2 )
     {
@@ -1611,6 +1647,13 @@ static uint8_t* cy_wps_write_credentials(cy_wps_agent_t* workspace, uint8_t* ite
         encryption_type     = cy_hton16( credential.encryption_type  );
     }
 
+    cy_wcm_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO,
+        "WPS M8 credential types: auth=0x%04x enc=0x%04x filtered_auth=0x%04x filtered_enc=0x%04x\r\n",
+        (unsigned int)cy_hton16(credential.authentication_type),
+        (unsigned int)cy_hton16(credential.encryption_type),
+        (unsigned int)authentication_type,
+        (unsigned int)encryption_type);
+
     /* Write credentials */
     encrypt_iter    = cy_wps_start_encrypted_tlv( iter );
     credential_iter = tlv_write_header( encrypt_iter, WPS_ID_CREDENTIAL,  0 );
@@ -1619,7 +1662,7 @@ static uint8_t* cy_wps_write_credentials(cy_wps_agent_t* workspace, uint8_t* ite
     credential_iter = tlv_write_value( credential_iter, WPS_ID_AUTH_TYPE, WPS_ID_AUTH_TYPE_S,             &authentication_type,            TLV_UINT8_PTR );
     credential_iter = tlv_write_value( credential_iter, WPS_ID_ENCR_TYPE, WPS_ID_ENCR_TYPE_S,             &encryption_type,                TLV_UINT8_PTR );
     credential_iter = tlv_write_value( credential_iter, WPS_ID_NW_KEY,    credential.network_key_length,  credential.network_key,          TLV_UINT8_PTR );
-    credential_iter = tlv_write_value( credential_iter, WPS_ID_MAC_ADDR,  sizeof(whd_mac_t),             &workspace->their_data.mac_address, TLV_UINT8_PTR );
+    credential_iter = tlv_write_value(credential_iter, WPS_ID_MAC_ADDR, sizeof(whd_mac_t), &workspace->my_data.mac_address, TLV_UINT8_PTR);
 
     /* Finish off the credential TLV */
     credential_header = (tlv16_data_t*)encrypt_iter;

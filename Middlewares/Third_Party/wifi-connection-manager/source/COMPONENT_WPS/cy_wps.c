@@ -994,6 +994,10 @@ void cy_wps_host_retrieve_credential( void* workspace, cy_wps_internal_credentia
     cy_wps_workspace_t*  host       = (cy_wps_workspace_t*) workspace;
     const cy_wps_credential_t* ap_details = host->stuff.registrar.ap_details;
 
+    credential->ssid_length = (uint8_t)strlen((char*)ap_details->ssid);
+    if (credential->ssid_length > CY_WPS_SSID_LENGTH) {
+        credential->ssid_length = CY_WPS_SSID_LENGTH;
+    }
     memcpy( credential->ssid, ap_details->ssid, sizeof( credential->ssid ) );
     credential->network_key_length = (uint8_t)strlen((char*)ap_details->passphrase);
     memcpy( credential->network_key, ap_details->passphrase, sizeof( credential->network_key ) );

@@ -295,6 +295,13 @@ bool cy_lwip_dhcp_server_get_cached_client_ipv4(const uint8_t client_mac[6], uin
 
     found = get_client_ip_address_from_cache(&lookup_mac, &cached_ip);
     if (found) {
+        printf("DHCP cache hit mac=%02x:%02x:%02x:%02x:%02x:%02x ip=%lu.%lu.%lu.%lu\r\n",
+            lookup_mac.octet[0], lookup_mac.octet[1], lookup_mac.octet[2],
+            lookup_mac.octet[3], lookup_mac.octet[4], lookup_mac.octet[5],
+            (unsigned long)((cached_ip.ip.v4 >> 24) & 0xffu),
+            (unsigned long)((cached_ip.ip.v4 >> 16) & 0xffu),
+            (unsigned long)((cached_ip.ip.v4 >> 8) & 0xffu),
+            (unsigned long)(cached_ip.ip.v4 & 0xffu));
         *client_ipv4_be = htonl(cached_ip.ip.v4);
     }
 
@@ -356,7 +363,6 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
 #endif
     netmask_htobe = htobe32(GET_IPV4_ADDRESS(netmask));
     memcpy(&subnet_mask_option_buff[2], &netmask_htobe, 4);
-
     /* Calculate the first available IP address which will be served - based on the netmask and the local IP address*/
     ip_mask = ~(GET_IPV4_ADDRESS(netmask));
     subnet = GET_IPV4_ADDRESS(local_ip_address) & GET_IPV4_ADDRESS(netmask);
@@ -371,7 +377,8 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
     {
         uint16_t       data_length = 0;
         uint16_t       available_data_length = 0;
-        dhcp_header_t  *request_header;
+        dhcp_header_t request_header_local;
+        dhcp_header_t* request_header = &request_header_local;
 
         /* Sleep until the data is received from the socket */
         if (udp_receive(&server->socket, &received_packet, WAIT_FOREVER) != CY_RSLT_SUCCESS)
@@ -379,20 +386,16 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
             continue;
         }
 
-        /* Get a pointer to the data in the packet */
-        packet_get_data(received_packet, 0, (uint8_t**) &request_header, &data_length, &available_data_length);
+        memset(request_header, 0, sizeof(*request_header));
+        available_data_length = (uint16_t)netbuf_len(received_packet);
+        data_length = (uint16_t)MIN(available_data_length, (uint16_t)sizeof(*request_header));
+        netbuf_copy_partial(received_packet, request_header, data_length, 0);
 
-        if (data_length != available_data_length)
-        {
-            /* Fragmented packets are not supported */
-            packet_delete(received_packet);
-            continue;
-        }
+        printf("DHCP: rx pkt len=%u\r\n", (unsigned)available_data_length);
 
         /* Check if the received data length is at least the size of dhcp_header_t. */
         /* The Options field in the DHCP header is of variable length. Look for the "DHCP Message Type" option that is 3 octets in size (code, length and type). */
-        if (data_length < (sizeof(dhcp_header_t) - sizeof(request_header->options) + 3))
-        {
+        if (available_data_length < (sizeof(dhcp_header_t) - sizeof(request_header->options) + 3)) {
             packet_delete(received_packet);
             continue;
         }
@@ -416,6 +419,10 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
                 uint32_t                temp;
 
                 cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_DEBUG, "%s(): DHCPDISCOVER \n", __FUNCTION__ );
+                printf("DHCP discover from %02x:%02x:%02x:%02x:%02x:%02x\r\n",
+                    request_header->client_hardware_addr[0], request_header->client_hardware_addr[1],
+                    request_header->client_hardware_addr[2], request_header->client_hardware_addr[3],
+                    request_header->client_hardware_addr[4], request_header->client_hardware_addr[5]);
                 /* Create the reply packet */
                 if (packet_create_udp(&transmit_packet, (uint8_t**) &reply_header, &available_space) != CY_RSLT_SUCCESS)
                 {
@@ -443,6 +450,9 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
                 if (!get_client_ip_address_from_cache( &client_mac_address, &client_ip_address ))
                 {
                     /* Address not found in cache. Use the next available IP address */
+                    printf("DHCP cache miss for discover mac=%02x:%02x:%02x:%02x:%02x:%02x\r\n",
+                        client_mac_address.octet[0], client_mac_address.octet[1], client_mac_address.octet[2],
+                        client_mac_address.octet[3], client_mac_address.octet[4], client_mac_address.octet[5]);
                     client_ip_address.version = CY_LWIP_IP_VER_V4;
                     client_ip_address.ip.v4   = next_available_ip_addr;
                 }
@@ -484,6 +494,10 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
             case DHCPREQUEST:
             {
                 cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_DEBUG, "%s(): DHCPREQUEST \n", __FUNCTION__ );
+                printf("DHCP request from %02x:%02x:%02x:%02x:%02x:%02x\r\n",
+                    request_header->client_hardware_addr[0], request_header->client_hardware_addr[1],
+                    request_header->client_hardware_addr[2], request_header->client_hardware_addr[3],
+                    request_header->client_hardware_addr[4], request_header->client_hardware_addr[5]);
                 /* REQUEST command - send back ACK or NAK */
                 uint32_t                temp;
                 dhcp_header_t           *reply_header;
@@ -544,6 +558,9 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
                 if ( !get_client_ip_address_from_cache( &client_mac_address, &given_ip_address ) )
                 {
                     /* Address not found in cache. Use the next available IP address */
+                    printf("DHCP cache miss for request mac=%02x:%02x:%02x:%02x:%02x:%02x\r\n",
+                        client_mac_address.octet[0], client_mac_address.octet[1], client_mac_address.octet[2],
+                        client_mac_address.octet[3], client_mac_address.octet[4], client_mac_address.octet[5]);
                     next_avail_ip_address_used = true;
                     given_ip_address.version   = CY_LWIP_IP_VER_V4;
                     given_ip_address.ip.v4     = next_available_ip_addr;
@@ -784,6 +801,7 @@ static void ipv4_to_string( char* buffer, uint32_t ipv4_address )
 static cy_rslt_t udp_create_socket(cy_lwip_udp_socket_t *socket, uint16_t port, cy_network_interface_context *iface_context)
 {
     err_t status;
+    struct netif* iface;
     cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_DEBUG, "%s(): START \n", __FUNCTION__ );
     memset( socket, 0, sizeof(cy_lwip_udp_socket_t) );
 
@@ -799,6 +817,18 @@ static cy_rslt_t udp_create_socket(cy_lwip_udp_socket_t *socket, uint16_t port, 
         return CY_RSLT_NETWORK_SOCKET_CREATE_FAIL;
     }
 
+    socket->type = iface_context->iface_type;
+    socket->index = iface_context->iface_idx;
+    iface = cy_network_get_nw_interface(socket->type, socket->index);
+    if (iface == NULL) {
+        cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "failed to resolve DHCP netif for type:%d index:%u\n",
+            (int)socket->type,
+            (unsigned)socket->index);
+        netconn_delete(socket->conn_handler);
+        socket->conn_handler = NULL;
+        return CY_RSLT_NETWORK_SOCKET_ERROR;
+    }
+
     /* Call the wifi-mw-core network activity function to resume the network stack. */
     cy_network_activity_notify(CY_NETWORK_ACTIVITY_TX);
 
@@ -812,9 +842,9 @@ static cy_rslt_t udp_create_socket(cy_lwip_udp_socket_t *socket, uint16_t port, 
         socket->conn_handler = NULL;
         return CY_RSLT_NETWORK_SOCKET_ERROR;
     }
-    socket->is_bound  = true;
-    socket->type = iface_context->iface_type;
-    socket->index = iface_context->iface_idx;
+
+    udp_bind_netif(socket->conn_handler->pcb.udp, iface);
+    socket->is_bound = true;
 
     cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_DEBUG, "%s(): END \n", __FUNCTION__ );
     return CY_RSLT_SUCCESS;
