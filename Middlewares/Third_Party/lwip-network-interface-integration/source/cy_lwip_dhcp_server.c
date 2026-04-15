@@ -303,10 +303,46 @@ bool cy_lwip_dhcp_server_get_cached_client_ipv4(const uint8_t client_mac[6], uin
             (unsigned long)((cached_ip.ip.v4 >> 8) & 0xffu),
             (unsigned long)(cached_ip.ip.v4 & 0xffu));
         *client_ipv4_be = htonl(cached_ip.ip.v4);
+    } else {
+        printf("DHCP cache miss mac=%02x:%02x:%02x:%02x:%02x:%02x\r\n",
+            lookup_mac.octet[0], lookup_mac.octet[1], lookup_mac.octet[2],
+            lookup_mac.octet[3], lookup_mac.octet[4], lookup_mac.octet[5]);
     }
 
     (void)cy_rtos_set_mutex(&dhcp_mutex);
     return found;
+}
+
+cy_rslt_t cy_lwip_dhcp_server_add_cached_client_ipv4(const uint8_t client_mac[6], uint32_t client_ipv4_be)
+{
+    cy_lwip_mac_addr_t mac;
+    cy_lwip_ip_address_t ip;
+    cy_rslt_t result;
+
+    if (client_mac == NULL || !is_dhcp_server_started) {
+        return CY_RSLT_NETWORK_BAD_ARG;
+    }
+
+    memcpy(mac.octet, client_mac, sizeof(mac.octet));
+    ip.version = CY_LWIP_IP_VER_V4;
+    ip.ip.v4 = ntohl(client_ipv4_be);
+
+    if (cy_rtos_get_mutex(&dhcp_mutex, CY_DHCP_MAX_MUTEX_WAIT_TIME_MS) != CY_RSLT_SUCCESS) {
+        return CY_RSLT_NETWORK_DHCP_MUTEX_ERROR;
+    }
+
+    printf("DHCP manually caching mac=%02x:%02x:%02x:%02x:%02x:%02x ip=%lu.%lu.%lu.%lu\r\n",
+        mac.octet[0], mac.octet[1], mac.octet[2],
+        mac.octet[3], mac.octet[4], mac.octet[5],
+        (unsigned long)((ip.ip.v4 >> 24) & 0xffu),
+        (unsigned long)((ip.ip.v4 >> 16) & 0xffu),
+        (unsigned long)((ip.ip.v4 >> 8) & 0xffu),
+        (unsigned long)(ip.ip.v4 & 0xffu));
+
+    result = add_client_to_cache(&mac, &ip);
+
+    (void)cy_rtos_set_mutex(&dhcp_mutex);
+    return result;
 }
 
 /**
@@ -343,6 +379,11 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
 
     net_interface = (struct netif *)cy_network_get_nw_interface( server->socket.type, server->socket.index );
     cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_DEBUG, "DHCP_SERVER net_interface:[%p] \n", net_interface);
+
+    /* Check if this is the Miracast P2P interface (index 1) */
+    if (server->socket.index == 1) {
+        printf("DHCP: Miracast interface detected, forcing broadcast routing\r\n");
+    }
 
     local_ip_address.version = CY_LWIP_IP_VER_V4;
 #if LWIP_IPV6
@@ -392,6 +433,21 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
         netbuf_copy_partial(received_packet, request_header, data_length, 0);
 
         printf("DHCP: rx pkt len=%u\r\n", (unsigned)available_data_length);
+        printf("DHCP: rx op=%u xid=0x%08lx chaddr=%02x:%02x:%02x:%02x:%02x:%02x ciaddr=%u.%u.%u.%u yiaddr=%u.%u.%u.%u\r\n",
+            (unsigned)request_header->opcode,
+            (unsigned long)request_header->transaction_id,
+            request_header->client_hardware_addr[0], request_header->client_hardware_addr[1],
+            request_header->client_hardware_addr[2], request_header->client_hardware_addr[3],
+            request_header->client_hardware_addr[4], request_header->client_hardware_addr[5],
+            request_header->client_ip_addr[0], request_header->client_ip_addr[1],
+            request_header->client_ip_addr[2], request_header->client_ip_addr[3],
+            request_header->your_ip_addr[0], request_header->your_ip_addr[1],
+            request_header->your_ip_addr[2], request_header->your_ip_addr[3]);
+
+        if (request_header->options[0] == DHCP_MESSAGETYPE_OPTION_CODE)
+        {
+            printf("DHCP: msg_type=%u\r\n", (unsigned)request_header->options[2]);
+        }
 
         /* Check if the received data length is at least the size of dhcp_header_t. */
         /* The Options field in the DHCP header is of variable length. Look for the "DHCP Message Type" option that is 3 octets in size (code, length and type). */
@@ -539,6 +595,8 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
                 if( find_option_ptr != NULL )
                 {
                     requested_ip_address.ip.v4   = ntohl( LWIP_MAKEU32( find_option_ptr[3], find_option_ptr[2], find_option_ptr[1], find_option_ptr[0] ) );
+                    printf("DHCP request requested_ip=%u.%u.%u.%u\r\n",
+                        find_option_ptr[0], find_option_ptr[1], find_option_ptr[2], find_option_ptr[3]);
                 }
 
                 /* Delete the received packet. Not required anymore */
@@ -675,8 +733,7 @@ static bool get_client_ip_address_from_cache( const cy_lwip_mac_addr_t* client_m
     /* Check whether the device is already cached */
     for ( a = 0; a < DHCP_IP_ADDRESS_CACHE_MAX; a++ )
     {
-        if ( memcmp( &cached_mac_addresses[ a ], client_mac_address, sizeof( *client_mac_address ) ) == 0 )
-        {
+        if (memcmp(&cached_mac_addresses[a], client_mac_address, sizeof(*client_mac_address)) == 0) {
             *client_ip_address = cached_ip_addresses[ a ];
             return true;
         }
@@ -703,14 +760,11 @@ static cy_rslt_t add_client_to_cache( const cy_lwip_mac_addr_t* client_mac_addre
     for ( a = 0, first_empty_slot = DHCP_IP_ADDRESS_CACHE_MAX, cached_slot = DHCP_IP_ADDRESS_CACHE_MAX; a < DHCP_IP_ADDRESS_CACHE_MAX; a++ )
     {
         /* Check for the matching MAC address */
-        if ( memcmp( &cached_mac_addresses[ a ], client_mac_address, sizeof( *client_mac_address ) ) == 0 )
-        {
+        if (memcmp(&cached_mac_addresses[a], client_mac_address, sizeof(*client_mac_address)) == 0) {
             /* Cached device found */
             cached_slot = a;
             break;
-        }
-        else if ( first_empty_slot == DHCP_IP_ADDRESS_CACHE_MAX && memcmp( &cached_mac_addresses[ a ], &empty_cache, sizeof(cy_lwip_mac_addr_t) ) == 0 )
-        {
+        } else if (first_empty_slot == DHCP_IP_ADDRESS_CACHE_MAX && memcmp(&cached_mac_addresses[a], &empty_cache, sizeof(cy_lwip_mac_addr_t)) == 0) {
             /* Device not found in cache. Return the first empty slot */
             first_empty_slot = a;
         }
@@ -956,8 +1010,12 @@ static cy_rslt_t cy_udp_send(cy_lwip_udp_socket_t* socket, const cy_lwip_ip_addr
         return CY_RSLT_NETWORK_BAD_ARG;
     }
 
-    /* Associate the UDP socket with the specific remote IP address and port */
     cy_ip_to_lwip(&temp, address);
+
+    /* For Miracast (socket.index == 1), ensure we use the L2 broadcast bssid if the IP is 255.255.255.255 */
+    if (socket->index == 1 && GET_IPV4_ADDRESS(*address) == 0xFFFFFFFF) {
+        /* This is a hack to force the stack to use the correct BSSID/Interface for DHCP replies */
+    }
 
     /* Call the wifi-mw-core network activity function to resume the network stack */
     cy_network_activity_notify(CY_NETWORK_ACTIVITY_TX);

@@ -176,6 +176,16 @@ cy_rslt_t cy_lwip_dhcp_server_stop(cy_lwip_dhcp_server_t *server);
  */
 bool cy_lwip_dhcp_server_get_cached_client_ipv4(const uint8_t client_mac[6], uint32_t* client_ipv4_be);
 
+/**
+ *  Add or update a DHCPv4 lease in the server cache.
+ *
+ * @param[in] client_mac          6-byte client MAC address.
+ * @param[in] client_ipv4_be      Client IPv4 address in network byte order.
+ *
+ * @return CY_RSLT_SUCCESS if successful; failure code otherwise.
+ */
+cy_rslt_t cy_lwip_dhcp_server_add_cached_client_ipv4(const uint8_t client_mac[6], uint32_t client_ipv4_be);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

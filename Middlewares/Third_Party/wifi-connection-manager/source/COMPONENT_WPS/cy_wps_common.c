@@ -314,12 +314,14 @@ void cy_host_start_timer( void* workspace, uint32_t timeout )
     cy_host_workspace_t* host = (cy_host_workspace_t*) workspace;
     cy_rtos_get_time( &host->timer_reference );
     host->timer_timeout = timeout;
+    printf("WPS: arm timer timeout=%lu\r\n", (unsigned long)timeout);
 }
 
 void cy_host_stop_timer( void* workspace )
 {
     cy_host_workspace_t* host = (cy_host_workspace_t*) workspace;
     host->timer_timeout = 0;
+    printf("WPS: stop timer\r\n");
 }
 
 uint32_t cy_host_get_current_time( void )
@@ -367,14 +369,83 @@ uint16_t cy_hton16(uint16_t intshort)
     return htobe16(intshort);
 }
 
+static const char* cy_wps_main_stage_name(cy_wps_main_stage_t stage)
+{
+    switch (stage) {
+    case CY_WPS_INITIALISING:
+        return "INITIALISING";
+    case CY_WPS_IN_WPS_HANDSHAKE:
+        return "IN_WPS_HANDSHAKE";
+    case CY_WPS_CLOSING_EAP:
+        return "CLOSING_EAP";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+static const char* cy_wps_event_name(cy_wps_event_t event_type)
+{
+    switch (event_type) {
+    case CY_EVENT_NO_EVENT:
+        return "NO_EVENT";
+    case CY_EVENT_TIMER_TIMEOUT:
+        return "TIMER_TIMEOUT";
+    case CY_EVENT_ABORT_REQUESTED:
+        return "ABORT_REQUESTED";
+    case CY_EVENT_EAPOL_PACKET_RECEIVED:
+        return "EAPOL_PACKET_RECEIVED";
+    case CY_EVENT_RECEIVED_IDENTITY_REQUEST:
+        return "RECEIVED_IDENTITY_REQUEST";
+    case CY_EVENT_COMPLETE:
+        return "COMPLETE";
+    case CY_SUPPLICANT_EVENT_PACKET_TO_SEND:
+        return "SUPPLICANT_PACKET_TO_SEND";
+    case CY_WPS_EVENT_DISCOVER_COMPLETE:
+        return "DISCOVER_COMPLETE";
+    case CY_WPS_EVENT_ENROLLEE_ASSOCIATED:
+        return "ENROLLEE_ASSOCIATED";
+    case CY_WPS_EVENT_RECEIVED_IDENTITY:
+        return "RECEIVED_IDENTITY";
+    case CY_WPS_EVENT_RECEIVED_WPS_START:
+        return "RECEIVED_WPS_START";
+    case CY_WPS_EVENT_RECEIVED_EAPOL_START:
+        return "RECEIVED_EAPOL_START";
+    case CY_WPS_EVENT_PBC_OVERLAP_NOTIFY_USER:
+        return "PBC_OVERLAP_NOTIFY_USER";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+static void cy_wps_log_workspace_state(const char* prefix, cy_wps_agent_t* workspace)
+{
+    if (workspace == NULL) {
+        return;
+    }
+
+    printf("WPS: %s agent=%u main=%u(%s) sub=%u result=0x%lx\r\n",
+        prefix,
+        (unsigned int)workspace->agent_type,
+        (unsigned int)workspace->current_main_stage,
+        cy_wps_main_stage_name(workspace->current_main_stage),
+        (unsigned int)workspace->current_sub_stage,
+        (unsigned long)workspace->wps_result);
+}
+
 cy_rslt_t cy_wps_process_event(cy_wps_agent_t* workspace, cy_event_message_t* event)
 {
     cy_rslt_t result;
+
+    printf("WPS: event=%u(%s)\r\n",
+        (unsigned int)event->event_type,
+        cy_wps_event_name(event->event_type));
+    cy_wps_log_workspace_state("before event", workspace);
 
     /* Check for an abort */
     if (event->event_type == CY_EVENT_ABORT_REQUESTED)
     {
         workspace->wps_result = CY_RSLT_WPS_ABORTED;
+        cy_wps_log_workspace_state("abort requested", workspace);
         return CY_RSLT_SUCCESS;
     }
 
@@ -622,6 +693,12 @@ static cy_rslt_t cy_wps_common_event_handler(cy_wps_agent_t* workspace, cy_event
             break;
 
         case CY_EVENT_TIMER_TIMEOUT:
+            printf("WPS: timer expired agent=%u main=%u(%s) sub=%u result=0x%lx\r\n",
+                (unsigned int)workspace->agent_type,
+                (unsigned int)workspace->current_main_stage,
+                cy_wps_main_stage_name(workspace->current_main_stage),
+                (unsigned int)workspace->current_sub_stage,
+                (unsigned long)workspace->wps_result);
             return CY_RSLT_WPS_ERROR_NO_RESPONSE;
             break;
 
@@ -745,10 +822,24 @@ static void cy_wps_send_protocol_message(cy_wps_agent_t* workspace, cy_packet_t*
         /* After the enrollee sends m1 wait a little longer in case the registrar is slow */
         if ( workspace->current_sub_stage == CY_WPS_SENDING_PUBLIC_KEYS )
         {
+            printf("WPS: arm next wait timeout=%u agent=%u main=%u(%s) sub=%u out_type=%d\r\n",
+                (unsigned int)wps_m2_timeout,
+                (unsigned int)workspace->agent_type,
+                (unsigned int)workspace->current_main_stage,
+                cy_wps_main_stage_name(workspace->current_main_stage),
+                (unsigned int)workspace->current_sub_stage,
+                (int)wps_states[workspace->agent_type][workspace->current_sub_stage].outgoing_message_type);
             cy_host_start_timer( workspace->wps_host_workspace, wps_m2_timeout );
         }
         else
         {
+            printf("WPS: arm next wait timeout=%u agent=%u main=%u(%s) sub=%u out_type=%d\r\n",
+                (unsigned int)WPS_EAPOL_PACKET_TIMEOUT,
+                (unsigned int)workspace->agent_type,
+                (unsigned int)workspace->current_main_stage,
+                cy_wps_main_stage_name(workspace->current_main_stage),
+                (unsigned int)workspace->current_sub_stage,
+                (int)wps_states[workspace->agent_type][workspace->current_sub_stage].outgoing_message_type);
             cy_host_start_timer( workspace->wps_host_workspace, WPS_EAPOL_PACKET_TIMEOUT );
         }
     }
