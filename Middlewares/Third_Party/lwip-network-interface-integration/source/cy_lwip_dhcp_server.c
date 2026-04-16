@@ -182,7 +182,7 @@ static void cy_ip_to_lwip(ip_addr_t *dest, const cy_lwip_ip_address_t *src);
 
 static cy_lwip_mac_addr_t             cached_mac_addresses[DHCP_IP_ADDRESS_CACHE_MAX];
 static cy_lwip_ip_address_t           cached_ip_addresses [DHCP_IP_ADDRESS_CACHE_MAX];
-static struct netif *net_interface    = NULL;
+struct netif* net_interface = NULL;
 static bool is_dhcp_server_started    = false;
 /******************************************************
  *               Function Definitions
@@ -404,6 +404,9 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
 #endif
     netmask_htobe = htobe32(GET_IPV4_ADDRESS(netmask));
     memcpy(&subnet_mask_option_buff[2], &netmask_htobe, 4);
+    printf("DHCP Server configured with server_ip=%08lx, netmask=%08lx\r\n", 
+           (unsigned long)GET_IPV4_ADDRESS(local_ip_address), 
+           (unsigned long)GET_IPV4_ADDRESS(netmask));
     /* Calculate the first available IP address which will be served - based on the netmask and the local IP address*/
     ip_mask = ~(GET_IPV4_ADDRESS(netmask));
     subnet = GET_IPV4_ADDRESS(local_ip_address) & GET_IPV4_ADDRESS(netmask);
@@ -526,15 +529,15 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
                 option_ptr     = MEMCAT( option_ptr, server_ip_addr_option_buff, 6 );                               /* Server identifier            */
                 option_ptr     = MEMCAT( option_ptr, lease_time_option_buff, 6 );                                   /* Lease time                   */
                 option_ptr     = MEMCAT( option_ptr, subnet_mask_option_buff, 6 );                                  /* Subnet mask                  */
-                option_ptr     = (char*)MEMCAT( option_ptr, wpad_option_buff, sizeof(wpad_option_buff) );           /* Web proxy auto-discovery URL */
+                // option_ptr     = (char*)MEMCAT( option_ptr, wpad_option_buff, sizeof(wpad_option_buff) );           /* Web proxy auto-discovery URL */
                 /* Copy the local IP address into the router & DNS server options */
-                memcpy( option_ptr, server_ip_addr_option_buff, 6 );                                                /* Router (gateway)             */
-                option_ptr[0]  = 3;                                                                                 /* Router ID                    */
-                option_ptr    += 6;
-                memcpy( option_ptr, server_ip_addr_option_buff, 6 );                                                /* DNS server                   */
-                option_ptr[0]  = 6;                                                                                 /* DNS server ID                */
-                option_ptr    += 6;
-                option_ptr     = MEMCAT( option_ptr, mtu_option_buff, 4 );                                          /* Interface MTU                */
+                // memcpy( option_ptr, server_ip_addr_option_buff, 6 );                                                /* Router (gateway)             */
+                // option_ptr[0]  = 3;                                                                                 /* Router ID                    */
+                // option_ptr    += 6;
+                // memcpy( option_ptr, server_ip_addr_option_buff, 6 );                                                /* DNS server                   */
+                // option_ptr[0]  = 6;                                                                                 /* DNS server ID                */
+                // option_ptr    += 6;
+                // option_ptr     = MEMCAT( option_ptr, mtu_option_buff, 4 );                                          /* Interface MTU                */
                 option_ptr[0]  = (char) DHCP_END_OPTION_CODE;                                                       /* End options                  */
                 option_ptr++;
 
@@ -641,15 +644,15 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
                     option_ptr     = (char*)MEMCAT( option_ptr, server_ip_addr_option_buff, 6 );                        /* Server identifier            */
                     option_ptr     = (char*)MEMCAT( option_ptr, lease_time_option_buff, 6 );                            /* Lease time                   */
                     option_ptr     = (char*)MEMCAT( option_ptr, subnet_mask_option_buff, 6 );                           /* Subnet mask                  */
-                    option_ptr     = (char*)MEMCAT( option_ptr, wpad_option_buff, sizeof(wpad_option_buff) );           /* Web proxy auto-discovery URL */
+                    // option_ptr     = (char*)MEMCAT( option_ptr, wpad_option_buff, sizeof(wpad_option_buff) );           /* Web proxy auto-discovery URL */
                     /* Copy the local IP address into the router & DNS server options */
-                    memcpy( option_ptr, server_ip_addr_option_buff, 6 );                                                /* Router (gateway)             */
-                    option_ptr[0]  = 3;                                                                                 /* Router ID                    */
-                    option_ptr    += 6;
-                    memcpy( option_ptr, server_ip_addr_option_buff, 6 );                                                /* DNS server                   */
-                    option_ptr[0]  = 6;                                                                                 /* DNS server ID                */
-                    option_ptr    += 6;
-                    option_ptr     = (char*)MEMCAT( option_ptr, mtu_option_buff, 4 );                                   /* Interface MTU                */
+                    // memcpy( option_ptr, server_ip_addr_option_buff, 6 );                                                /* Router (gateway)             */
+                    // option_ptr[0]  = 3;                                                                                 /* Router ID                    */
+                    // option_ptr    += 6;
+                    // memcpy( option_ptr, server_ip_addr_option_buff, 6 );                                                /* DNS server                   */
+                    // option_ptr[0]  = 6;                                                                                 /* DNS server ID                */
+                    // option_ptr    += 6;
+                    // option_ptr     = (char*)MEMCAT( option_ptr, mtu_option_buff, 4 );                                   /* Interface MTU                */
 
                     /* Create the IP address for the Offer */
                     temp = htonl(given_ip_address.ip.v4);
