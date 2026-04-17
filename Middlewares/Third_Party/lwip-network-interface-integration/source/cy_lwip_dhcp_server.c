@@ -35,17 +35,19 @@
  *  Implementation of a simple DHCP server
  */
 
-#include "lwip/err.h"
 #include "lwip/api.h"
+#include "lwip/err.h"
 #include "lwip/netif.h"
 #include "lwip/netifapi.h"
+#include "lwip/udp.h"
 
 #if LWIP_IPV4
 
 #include "cy_lwip_dhcp_server.h"
+#include "cy_lwip_log.h"
 #include "cy_nw_mw_core_error.h"
 #include "cyabs_rtos.h"
-#include "cy_lwip_log.h"
+#include <stdio.h>
 #include <string.h>
 
 /******************************************************
@@ -81,7 +83,11 @@
 
 /* DHCP options */
 #define DHCP_SUBNETMASK_OPTION_CODE             (1)
+#define DHCP_ROUTER_OPTION_CODE (3)
+#define DHCP_DNS_SERVER_OPTION_CODE (6)
+#define DHCP_HOST_NAME_OPTION_CODE (12)
 #define DHCP_MTU_OPTION_CODE                    (26)
+#define DHCP_BROADCAST_OPTION_CODE (28)
 #define DHCP_REQUESTED_IP_ADDRESS_OPTION_CODE   (50)
 #define DHCP_LEASETIME_OPTION_CODE              (51)
 #define DHCP_MESSAGETYPE_OPTION_CODE            (53)
@@ -116,7 +122,7 @@ static const uint8_t mtu_option_buff[]             = { DHCP_MTU_OPTION_CODE, 2, 
 static const uint8_t dhcp_offer_option_buff[]      = { DHCP_MESSAGETYPE_OPTION_CODE, 1, DHCPOFFER };
 static const uint8_t dhcp_ack_option_buff[]        = { DHCP_MESSAGETYPE_OPTION_CODE, 1, DHCPACK };
 static const uint8_t dhcp_nak_option_buff[]        = { DHCP_MESSAGETYPE_OPTION_CODE, 1, DHCPNAK };
-static const uint8_t lease_time_option_buff[]      = { DHCP_LEASETIME_OPTION_CODE, 4, 0x00, 0x01, 0x51, 0x80 }; /* 1-day lease */
+static const uint8_t lease_time_option_buff[] = { DHCP_LEASETIME_OPTION_CODE, 4, 0x00, 0x00, 0x0E, 0x10 }; /* 1-hour lease */
 static const uint8_t dhcp_magic_cookie[]           = { 0x63, 0x82, 0x53, 0x63 };
 static const cy_lwip_mac_addr_t empty_cache        = { .octet = {0} };
 typedef struct netbuf cy_lwip_packet_t;
@@ -163,6 +169,7 @@ static const uint8_t* find_option (const dhcp_header_t* request, uint8_t option_
 static bool get_client_ip_address_from_cache (const cy_lwip_mac_addr_t* client_mac_address, cy_lwip_ip_address_t* client_ip_address);
 static cy_rslt_t add_client_to_cache (const cy_lwip_mac_addr_t* client_mac_address, const cy_lwip_ip_address_t* client_ip_address);
 static void ipv4_to_string (char* buffer, uint32_t ipv4_address);
+static void log_dhcp_payload(const char* label, const uint8_t* payload, uint16_t payload_length);
 static void cy_dhcp_thread_func (cy_thread_arg_t thread_input);
 static cy_rslt_t udp_create_socket(cy_lwip_udp_socket_t *socket, uint16_t port, cy_network_interface_context *iface_context);
 static cy_rslt_t udp_delete_socket(cy_lwip_udp_socket_t *socket);
@@ -189,8 +196,7 @@ static bool is_dhcp_server_started    = false;
  ******************************************************/
 
 #define DHCP_THREAD_PRIORITY                  (CY_RTOS_PRIORITY_ABOVENORMAL)
-#define DHCP_THREAD_STACK_SIZE                (1280)
-
+#define DHCP_THREAD_STACK_SIZE (1280 * 2)
 
 cy_rslt_t cy_lwip_dhcp_server_start(cy_lwip_dhcp_server_t* server, cy_network_interface_context *iface_context)
 {
@@ -380,9 +386,15 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
     net_interface = (struct netif *)cy_network_get_nw_interface( server->socket.type, server->socket.index );
     cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_DEBUG, "DHCP_SERVER net_interface:[%p] \n", net_interface);
 
-    /* Check if this is the Miracast P2P interface (index 1) */
-    if (server->socket.index == 1) {
-        printf("DHCP: Miracast interface detected, forcing broadcast routing\r\n");
+    if (net_interface == NULL) {
+        cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "DHCP: ERROR - Failed to get net_interface for type %d index %d\n", (int)server->socket.type, (int)server->socket.index);
+        cy_rtos_exit_thread();
+        return;
+    }
+
+    /* Check if this is the Miracast P2P interface (index 0) */
+    if (server->socket.index == 0) {
+        cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "DHCP: Miracast interface (idx 0) detected\r\n");
     }
 
     local_ip_address.version = CY_LWIP_IP_VER_V4;
@@ -404,19 +416,45 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
 #endif
     netmask_htobe = htobe32(GET_IPV4_ADDRESS(netmask));
     memcpy(&subnet_mask_option_buff[2], &netmask_htobe, 4);
-    printf("DHCP Server configured with server_ip=%08lx, netmask=%08lx\r\n", 
-           (unsigned long)GET_IPV4_ADDRESS(local_ip_address), 
-           (unsigned long)GET_IPV4_ADDRESS(netmask));
     /* Calculate the first available IP address which will be served - based on the netmask and the local IP address*/
     ip_mask = ~(GET_IPV4_ADDRESS(netmask));
     subnet = GET_IPV4_ADDRESS(local_ip_address) & GET_IPV4_ADDRESS(netmask);
     next_available_ip_addr = subnet | ((GET_IPV4_ADDRESS(local_ip_address) + 1) & ip_mask);
 
+    // Ensure the served IP is .2 if we are .1
+    if ((GET_IPV4_ADDRESS(local_ip_address) & 0xFF) == 1) {
+        next_available_ip_addr = (GET_IPV4_ADDRESS(local_ip_address) & 0xFFFFFF00) | 2;
+    }
+
+    cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "DHCP: start iface type=%d index=%d server=%lu.%lu.%lu.%lu netmask=%lu.%lu.%lu.%lu next_offer=%lu.%lu.%lu.%lu mtu=%u\r\n",
+        (int)server->socket.type,
+        (int)server->socket.index,
+        (unsigned long)((GET_IPV4_ADDRESS(local_ip_address) >> 24) & 0xffu),
+        (unsigned long)((GET_IPV4_ADDRESS(local_ip_address) >> 16) & 0xffu),
+        (unsigned long)((GET_IPV4_ADDRESS(local_ip_address) >> 8) & 0xffu),
+        (unsigned long)(GET_IPV4_ADDRESS(local_ip_address) & 0xffu),
+        (unsigned long)((GET_IPV4_ADDRESS(netmask) >> 24) & 0xffu),
+        (unsigned long)((GET_IPV4_ADDRESS(netmask) >> 16) & 0xffu),
+        (unsigned long)((GET_IPV4_ADDRESS(netmask) >> 8) & 0xffu),
+        (unsigned long)(GET_IPV4_ADDRESS(netmask) & 0xffu),
+        (unsigned long)((next_available_ip_addr >> 24) & 0xffu),
+        (unsigned long)((next_available_ip_addr >> 16) & 0xffu),
+        (unsigned long)((next_available_ip_addr >> 8) & 0xffu),
+        (unsigned long)(next_available_ip_addr & 0xffu),
+        (unsigned)CY_LWIP_PAYLOAD_MTU);
+
     /* Prepare the web proxy auto-discovery URL */
-    memcpy(&wpad_option_buff[2], WPAD_SAMPLE_URL, sizeof(WPAD_SAMPLE_URL)-1);
-    ipv4_to_string((char*)&wpad_option_buff[2 + 7], server_ip_addr_option_buff[2]);
+    // memcpy(&wpad_option_buff[2], WPAD_SAMPLE_URL, sizeof(WPAD_SAMPLE_URL)-1);
+    // ipv4_to_string((char*)&wpad_option_buff[2 + 7], server_ip_addr_option_buff[2]);
+
+    cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "DHCP: listening for requests on %lu.%lu.%lu.%lu:67\r\n",
+        (unsigned long)((GET_IPV4_ADDRESS(local_ip_address) >> 24) & 0xffu),
+        (unsigned long)((GET_IPV4_ADDRESS(local_ip_address) >> 16) & 0xffu),
+        (unsigned long)((GET_IPV4_ADDRESS(local_ip_address) >> 8) & 0xffu),
+        (unsigned long)(GET_IPV4_ADDRESS(local_ip_address) & 0xffu));
 
     /* Loop endlessly */
+    uint32_t receive_timeout_count = 0;
     while ( server->quit == false )
     {
         uint16_t       data_length = 0;
@@ -425,18 +463,27 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
         dhcp_header_t* request_header = &request_header_local;
 
         /* Sleep until the data is received from the socket */
-        if (udp_receive(&server->socket, &received_packet, WAIT_FOREVER) != CY_RSLT_SUCCESS)
-        {
+        if (udp_receive(&server->socket, &received_packet, DHCP_SERVER_RECEIVE_TIMEOUT) != CY_RSLT_SUCCESS) {
+            receive_timeout_count++;
+            if ((receive_timeout_count % 10u) == 0u) {
+                printf("DHCP: waiting for packet on %lu.%lu.%lu.%lu:67 (timeouts=%lu)\r\n",
+                    (unsigned long)((GET_IPV4_ADDRESS(local_ip_address) >> 24) & 0xffu),
+                    (unsigned long)((GET_IPV4_ADDRESS(local_ip_address) >> 16) & 0xffu),
+                    (unsigned long)((GET_IPV4_ADDRESS(local_ip_address) >> 8) & 0xffu),
+                    (unsigned long)(GET_IPV4_ADDRESS(local_ip_address) & 0xffu),
+                    (unsigned long)receive_timeout_count);
+            }
             continue;
         }
 
+        receive_timeout_count = 0;
         memset(request_header, 0, sizeof(*request_header));
         available_data_length = (uint16_t)netbuf_len(received_packet);
         data_length = (uint16_t)MIN(available_data_length, (uint16_t)sizeof(*request_header));
         netbuf_copy_partial(received_packet, request_header, data_length, 0);
 
-        printf("DHCP: rx pkt len=%u\r\n", (unsigned)available_data_length);
-        printf("DHCP: rx op=%u xid=0x%08lx chaddr=%02x:%02x:%02x:%02x:%02x:%02x ciaddr=%u.%u.%u.%u yiaddr=%u.%u.%u.%u\r\n",
+        cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "DHCP: rx pkt len=%u\r\n", (unsigned)available_data_length);
+        cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "DHCP: rx op=%u xid=0x%08lx chaddr=%02x:%02x:%02x:%02x:%02x:%02x ciaddr=%u.%u.%u.%u yiaddr=%u.%u.%u.%u\r\n",
             (unsigned)request_header->opcode,
             (unsigned long)request_header->transaction_id,
             request_header->client_hardware_addr[0], request_header->client_hardware_addr[1],
@@ -449,7 +496,7 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
 
         if (request_header->options[0] == DHCP_MESSAGETYPE_OPTION_CODE)
         {
-            printf("DHCP: msg_type=%u\r\n", (unsigned)request_header->options[2]);
+            cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "DHCP: msg_type=%u\r\n", (unsigned)request_header->options[2]);
         }
 
         /* Check if the received data length is at least the size of dhcp_header_t. */
@@ -477,8 +524,10 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
                 cy_lwip_ip_address_t    client_ip_address;
                 uint32_t                temp;
 
+                log_dhcp_payload("DHCP DISCOVER", (const uint8_t*)request_header, (uint16_t)available_data_length);
+
                 cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_DEBUG, "%s(): DHCPDISCOVER \n", __FUNCTION__ );
-                printf("DHCP discover from %02x:%02x:%02x:%02x:%02x:%02x\r\n",
+                cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "DHCP discover from %02x:%02x:%02x:%02x:%02x:%02x\r\n",
                     request_header->client_hardware_addr[0], request_header->client_hardware_addr[1],
                     request_header->client_hardware_addr[2], request_header->client_hardware_addr[3],
                     request_header->client_hardware_addr[4], request_header->client_hardware_addr[5]);
@@ -509,7 +558,7 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
                 if (!get_client_ip_address_from_cache( &client_mac_address, &client_ip_address ))
                 {
                     /* Address not found in cache. Use the next available IP address */
-                    printf("DHCP cache miss for discover mac=%02x:%02x:%02x:%02x:%02x:%02x\r\n",
+                    cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "DHCP cache miss for discover mac=%02x:%02x:%02x:%02x:%02x:%02x\r\n",
                         client_mac_address.octet[0], client_mac_address.octet[1], client_mac_address.octet[2],
                         client_mac_address.octet[3], client_mac_address.octet[4], client_mac_address.octet[5]);
                     client_ip_address.version = CY_LWIP_IP_VER_V4;
@@ -529,17 +578,66 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
                 option_ptr     = MEMCAT( option_ptr, server_ip_addr_option_buff, 6 );                               /* Server identifier            */
                 option_ptr     = MEMCAT( option_ptr, lease_time_option_buff, 6 );                                   /* Lease time                   */
                 option_ptr     = MEMCAT( option_ptr, subnet_mask_option_buff, 6 );                                  /* Subnet mask                  */
-                // option_ptr     = (char*)MEMCAT( option_ptr, wpad_option_buff, sizeof(wpad_option_buff) );           /* Web proxy auto-discovery URL */
-                /* Copy the local IP address into the router & DNS server options */
-                // memcpy( option_ptr, server_ip_addr_option_buff, 6 );                                                /* Router (gateway)             */
-                // option_ptr[0]  = 3;                                                                                 /* Router ID                    */
-                // option_ptr    += 6;
-                // memcpy( option_ptr, server_ip_addr_option_buff, 6 );                                                /* DNS server                   */
-                // option_ptr[0]  = 6;                                                                                 /* DNS server ID                */
-                // option_ptr    += 6;
-                // option_ptr     = MEMCAT( option_ptr, mtu_option_buff, 4 );                                          /* Interface MTU                */
+
+                if (server->socket.index == 0) {
+                    cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "DHCP: Sending Miracast Attributes (Router: 192.168.49.1, DNS: 192.168.49.1, MTU: %d)\r\n", CY_LWIP_PAYLOAD_MTU);
+                    // Option 3: Router (Gateway) - 192.168.49.1
+                    option_ptr[0] = DHCP_ROUTER_OPTION_CODE;
+                    option_ptr[1] = 4;
+                    option_ptr[2] = 192;
+                    option_ptr[3] = 168;
+                    option_ptr[4] = 49;
+                    option_ptr[5] = 1;
+                    option_ptr += 6;
+
+                    // Option 6: DNS Server - 192.168.49.1
+                    option_ptr[0] = DHCP_DNS_SERVER_OPTION_CODE;
+                    option_ptr[1] = 4;
+                    option_ptr[2] = 192;
+                    option_ptr[3] = 168;
+                    option_ptr[4] = 49;
+                    option_ptr[5] = 1;
+                    option_ptr += 6;
+
+                    // Option 28: Broadcast Address - 192.168.49.255
+                    option_ptr[0] = DHCP_BROADCAST_OPTION_CODE;
+                    option_ptr[1] = 4;
+                    option_ptr[2] = 192;
+                    option_ptr[3] = 168;
+                    option_ptr[4] = 49;
+                    option_ptr[5] = 255;
+                    option_ptr += 6;
+
+                    // Option 26: Interface MTU - 1500
+                    option_ptr[0] = DHCP_MTU_OPTION_CODE;
+                    option_ptr[1] = 2;
+                    option_ptr[2] = (uint8_t)(CY_LWIP_PAYLOAD_MTU >> 8);
+                    option_ptr[3] = (uint8_t)(CY_LWIP_PAYLOAD_MTU & 0xFF);
+                    option_ptr += 4;
+
+                    // Option 15: Domain Name - "local"
+                    option_ptr[0] = 15;
+                    option_ptr[1] = 5;
+                    option_ptr[2] = 'l';
+                    option_ptr[3] = 'o';
+                    option_ptr[4] = 'c';
+                    option_ptr[5] = 'a';
+                    option_ptr[6] = 'l';
+                    option_ptr += 7;
+                }
+
                 option_ptr[0]  = (char) DHCP_END_OPTION_CODE;                                                       /* End options                  */
                 option_ptr++;
+
+                /* Pad to 300 bytes total */
+                uint16_t current_len = (uint16_t)(option_ptr - (char*)reply_header);
+                if (current_len < 300) {
+                    memset(option_ptr, 0, 300 - current_len);
+                    option_ptr += (300 - current_len);
+                    current_len = 300;
+                }
+
+                log_dhcp_payload("DHCP OFFER payload", (const uint8_t*)reply_header, current_len);
 
                 /* Send OFFER reply packet */
                 packet_set_data_end(transmit_packet, (uint8_t*) option_ptr);
@@ -552,8 +650,9 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
 
             case DHCPREQUEST:
             {
+                log_dhcp_payload("DHCP REQUEST", (const uint8_t*)request_header, (uint16_t)available_data_length);
                 cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_DEBUG, "%s(): DHCPREQUEST \n", __FUNCTION__ );
-                printf("DHCP request from %02x:%02x:%02x:%02x:%02x:%02x\r\n",
+                cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "DHCP request from %02x:%02x:%02x:%02x:%02x:%02x\r\n",
                     request_header->client_hardware_addr[0], request_header->client_hardware_addr[1],
                     request_header->client_hardware_addr[2], request_header->client_hardware_addr[3],
                     request_header->client_hardware_addr[4], request_header->client_hardware_addr[5]);
@@ -598,7 +697,7 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
                 if( find_option_ptr != NULL )
                 {
                     requested_ip_address.ip.v4   = ntohl( LWIP_MAKEU32( find_option_ptr[3], find_option_ptr[2], find_option_ptr[1], find_option_ptr[0] ) );
-                    printf("DHCP request requested_ip=%u.%u.%u.%u\r\n",
+                    cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "DHCP request requested_ip=%u.%u.%u.%u\r\n",
                         find_option_ptr[0], find_option_ptr[1], find_option_ptr[2], find_option_ptr[3]);
                 }
 
@@ -619,7 +718,7 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
                 if ( !get_client_ip_address_from_cache( &client_mac_address, &given_ip_address ) )
                 {
                     /* Address not found in cache. Use the next available IP address */
-                    printf("DHCP cache miss for request mac=%02x:%02x:%02x:%02x:%02x:%02x\r\n",
+                    cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "DHCP cache miss for request mac=%02x:%02x:%02x:%02x:%02x:%02x\r\n",
                         client_mac_address.octet[0], client_mac_address.octet[1], client_mac_address.octet[2],
                         client_mac_address.octet[3], client_mac_address.octet[4], client_mac_address.octet[5]);
                     next_avail_ip_address_used = true;
@@ -644,15 +743,53 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
                     option_ptr     = (char*)MEMCAT( option_ptr, server_ip_addr_option_buff, 6 );                        /* Server identifier            */
                     option_ptr     = (char*)MEMCAT( option_ptr, lease_time_option_buff, 6 );                            /* Lease time                   */
                     option_ptr     = (char*)MEMCAT( option_ptr, subnet_mask_option_buff, 6 );                           /* Subnet mask                  */
-                    // option_ptr     = (char*)MEMCAT( option_ptr, wpad_option_buff, sizeof(wpad_option_buff) );           /* Web proxy auto-discovery URL */
-                    /* Copy the local IP address into the router & DNS server options */
-                    // memcpy( option_ptr, server_ip_addr_option_buff, 6 );                                                /* Router (gateway)             */
-                    // option_ptr[0]  = 3;                                                                                 /* Router ID                    */
-                    // option_ptr    += 6;
-                    // memcpy( option_ptr, server_ip_addr_option_buff, 6 );                                                /* DNS server                   */
-                    // option_ptr[0]  = 6;                                                                                 /* DNS server ID                */
-                    // option_ptr    += 6;
-                    // option_ptr     = (char*)MEMCAT( option_ptr, mtu_option_buff, 4 );                                   /* Interface MTU                */
+
+                    if (server->socket.index == 0) {
+                        cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "DHCP: Sending Miracast Attributes (Router: 192.168.49.1, DNS: 192.168.49.1, MTU: %d)\r\n", CY_LWIP_PAYLOAD_MTU);
+                        // Option 3: Router (Gateway) - 192.168.49.1
+                        option_ptr[0] = DHCP_ROUTER_OPTION_CODE;
+                        option_ptr[1] = 4;
+                        option_ptr[2] = 192;
+                        option_ptr[3] = 168;
+                        option_ptr[4] = 49;
+                        option_ptr[5] = 1;
+                        option_ptr += 6;
+
+                        // Option 6: DNS Server - 192.168.49.1
+                        option_ptr[0] = DHCP_DNS_SERVER_OPTION_CODE;
+                        option_ptr[1] = 4;
+                        option_ptr[2] = 192;
+                        option_ptr[3] = 168;
+                        option_ptr[4] = 49;
+                        option_ptr[5] = 1;
+                        option_ptr += 6;
+
+                        // Option 28: Broadcast Address - 192.168.49.255
+                        option_ptr[0] = DHCP_BROADCAST_OPTION_CODE;
+                        option_ptr[1] = 4;
+                        option_ptr[2] = 192;
+                        option_ptr[3] = 168;
+                        option_ptr[4] = 49;
+                        option_ptr[5] = 255;
+                        option_ptr += 6;
+
+                        // Option 26: Interface MTU - 1500
+                        option_ptr[0] = DHCP_MTU_OPTION_CODE;
+                        option_ptr[1] = 2;
+                        option_ptr[2] = (uint8_t)(CY_LWIP_PAYLOAD_MTU >> 8);
+                        option_ptr[3] = (uint8_t)(CY_LWIP_PAYLOAD_MTU & 0xFF);
+                        option_ptr += 4;
+
+                        // Option 15: Domain Name - "local"
+                        option_ptr[0] = 15;
+                        option_ptr[1] = 5;
+                        option_ptr[2] = 'l';
+                        option_ptr[3] = 'o';
+                        option_ptr[4] = 'c';
+                        option_ptr[5] = 'a';
+                        option_ptr[6] = 'l';
+                        option_ptr += 7;
+                    }
 
                     /* Create the IP address for the Offer */
                     temp = htonl(given_ip_address.ip.v4);
@@ -674,6 +811,16 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
                 option_ptr[0] = (char) DHCP_END_OPTION_CODE; /* End options */
                 option_ptr++;
 
+                /* Pad to 300 bytes total */
+                uint16_t current_len = (uint16_t)(option_ptr - (char*)reply_header);
+                if (current_len < 300) {
+                    memset(option_ptr, 0, 300 - current_len);
+                    option_ptr += (300 - current_len);
+                    current_len = 300;
+                }
+
+                log_dhcp_payload("DHCP ACK/NAK payload", (const uint8_t*)reply_header, current_len);
+
                 /* Send the reply packet */
                 packet_set_data_end( transmit_packet, (uint8_t*) option_ptr );
                 if (cy_udp_send( &server->socket, &broadcast_addr, IPPORT_DHCPC, transmit_packet ) != CY_RSLT_SUCCESS)
@@ -685,6 +832,7 @@ static void cy_dhcp_thread_func(cy_thread_arg_t thread_input)
 
             default:
                 /* Unknown packet type - release the received packet */
+                printf("DHCP: Unsupported DHCP message type %u\r\n", (unsigned)request_header->options[2]);
                 packet_delete( received_packet );
             break;
         }
@@ -854,6 +1002,32 @@ static void ipv4_to_string( char* buffer, uint32_t ipv4_address )
     unsigned_to_decimal_string(ip[3], buffer + 12, 3, 3);
 }
 
+static void log_dhcp_payload(const char* label, const uint8_t* payload, uint16_t payload_length)
+{
+    char line[3 * 16 + 1];
+
+    if ((label == NULL) || (payload == NULL)) {
+        return;
+    }
+
+    cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "%s length=%u\r\n", label, (unsigned)payload_length);
+    printf("--- %s (%u bytes) ---\r\n", label, (unsigned)payload_length);
+
+    for (uint16_t offset = 0; offset < payload_length; offset += 16u) {
+        uint16_t chunk_length = (uint16_t)MIN((uint16_t)16u, (uint16_t)(payload_length - offset));
+        char* write_ptr = line;
+
+        for (uint16_t index = 0; index < chunk_length; ++index) {
+            (void)snprintf(write_ptr, 4, "%02x ", payload[offset + index]);
+            write_ptr += 3;
+        }
+
+        *write_ptr = '\0';
+        cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "%04u: %s\r\n", (unsigned)offset, line);
+        printf("%04u: %s\r\n", (unsigned)offset, line);
+    }
+    printf("--- End %s ---\r\n", label);
+}
 
 static cy_rslt_t udp_create_socket(cy_lwip_udp_socket_t *socket, uint16_t port, cy_network_interface_context *iface_context)
 {
@@ -892,15 +1066,22 @@ static cy_rslt_t udp_create_socket(cy_lwip_udp_socket_t *socket, uint16_t port, 
     cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "UDP socket :[%d]\n", port);
     /* Bind it to the designated port and IP address */
     status = netconn_bind( socket->conn_handler, IP_ANY_TYPE, port );
-    if( status != ERR_OK )
-    {
-        cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "socket bind failed \n");
+    if (status == ERR_OK) {
+        /* Enable broadcast for DHCP server */
+        socket->conn_handler->pcb.udp->so_options |= SOF_BROADCAST;
+    } else {
+        cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "socket bind failed: %d\n", (int)status);
         netconn_delete( socket->conn_handler );
         socket->conn_handler = NULL;
         return CY_RSLT_NETWORK_SOCKET_ERROR;
     }
 
-    udp_bind_netif(socket->conn_handler->pcb.udp, iface);
+    /* Force the connection to the specific netif to ensure broadcast reception */
+    if (iface != NULL) {
+        cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "DHCP: Binding socket to iface %p (idx %u)\n", iface, (unsigned)socket->index);
+        netconn_bind_if(socket->conn_handler, netif_get_index(iface));
+        udp_bind_netif(socket->conn_handler->pcb.udp, iface);
+    }
     socket->is_bound = true;
 
     cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_DEBUG, "%s(): END \n", __FUNCTION__ );
@@ -1015,9 +1196,16 @@ static cy_rslt_t cy_udp_send(cy_lwip_udp_socket_t* socket, const cy_lwip_ip_addr
 
     cy_ip_to_lwip(&temp, address);
 
-    /* For Miracast (socket.index == 1), ensure we use the L2 broadcast bssid if the IP is 255.255.255.255 */
-    if (socket->index == 1 && GET_IPV4_ADDRESS(*address) == 0xFFFFFFFF) {
-        /* This is a hack to force the stack to use the correct BSSID/Interface for DHCP replies */
+    /* For Miracast, ensure we use the L2 broadcast bssid if the IP is 255.255.255.255 */
+    printf("DHCP Server: internal_udp_send_to role=%d idx=%d addr=%08X\n", (int)socket->type, (int)socket->index, (unsigned int)GET_IPV4_ADDRESS(*address));
+
+    /* The log shows idx=0 for Miracast packets in the server, so we check for both index 0 and 1 */
+    if (socket->index == 0 || socket->index == 1) {
+        /* Force SOF_BROADCAST on the PCB so lwIP allows sending to 255.255.255.255 */
+        if (socket->conn_handler && socket->conn_handler->pcb.udp) {
+            socket->conn_handler->pcb.udp->so_options |= 0x20U; // SOF_BROADCAST
+            printf("DHCP Server: Forced SOF_BROADCAST on PCB (Current Options: 0x%02x)\n", socket->conn_handler->pcb.udp->so_options);
+        }
     }
 
     /* Call the wifi-mw-core network activity function to resume the network stack */
@@ -1069,6 +1257,8 @@ static cy_rslt_t internal_udp_send(struct netconn* handler, cy_lwip_packet_t* pa
         cy_network_hw_interface_type_t type, uint8_t index)
 {
     err_t status;
+    uint8_t retry = 0;
+    const uint8_t max_retries = 20;
     if(cy_rtos_get_mutex(&dhcp_mutex, CY_DHCP_MAX_MUTEX_WAIT_TIME_MS) != CY_RSLT_SUCCESS)
     {
         return CY_RSLT_NETWORK_DHCP_WAIT_TIMEOUT;
@@ -1078,11 +1268,57 @@ static cy_rslt_t internal_udp_send(struct netconn* handler, cy_lwip_packet_t* pa
     cy_network_activity_notify(CY_NETWORK_ACTIVITY_TX);
 
     /* Bind the interface to the socket */
-    udp_bind_netif(handler->pcb.udp, cy_network_get_nw_interface(type, index));
+    struct netif* nif = cy_network_get_nw_interface(type, index);
+    if (nif) {
+        printf("DHCP Server: sending on netif %p (%c%c%d) IP: %u.%u.%u.%u Flags: 0x%02x\n",
+            nif, nif->name[0], nif->name[1], nif->num,
+            (unsigned int)((ntohl(ip_2_ip4(&nif->ip_addr)->addr) >> 24) & 0xff),
+            (unsigned int)((ntohl(ip_2_ip4(&nif->ip_addr)->addr) >> 16) & 0xff),
+            (unsigned int)((ntohl(ip_2_ip4(&nif->ip_addr)->addr) >> 8) & 0xff),
+            (unsigned int)(ntohl(ip_2_ip4(&nif->ip_addr)->addr) & 0xff),
+            (unsigned int)nif->flags);
+    } else {
+        printf("DHCP Server: ERROR - netif not found for type %d index %d\n", (int)type, (int)index);
+        (void)cy_rtos_set_mutex(&dhcp_mutex);
+        return CY_RSLT_NETWORK_SOCKET_ERROR;
+    }
+    udp_bind_netif(handler->pcb.udp, nif);
+
+    /* Force SOF_BROADCAST on the PCB since this is a DHCP server */
+    handler->pcb.udp->so_options |= SOF_BROADCAST;
+
+    /* If local_ip is set and doesn't match netif IP, it triggers ERR_RTE in udp_sendto_if_src.
+     * Set it to ANY so lwIP selects the netif IP automatically. */
+    if (!ip_addr_isany(&handler->pcb.udp->local_ip) && !ip_addr_cmp(&handler->pcb.udp->local_ip, &nif->ip_addr)) {
+        printf("DHCP Server: Resetting local_ip (was %u) to ANY to avoid ERR_RTE\n",
+            (unsigned int)ip_2_ip4(&handler->pcb.udp->local_ip)->addr);
+        ip_addr_set_any(0, &handler->pcb.udp->local_ip);
+    }
 
     /* Send a packet */
     packet->p->len = packet->p->tot_len;
-    status = netconn_send( handler, packet );
+    printf("DHCP Server: Sending packet length %u to port %u\n", (unsigned)packet->p->tot_len, handler->pcb.udp->remote_port);
+    do {
+        status = udp_sendto_if_src(handler->pcb.udp,
+            packet->p,
+            &handler->pcb.udp->remote_ip,
+            handler->pcb.udp->remote_port,
+            nif,
+            &nif->ip_addr);
+
+        if (status == ERR_INPROGRESS) {
+            if (retry == 0U) {
+                printf("DHCP Server: Wi-Fi TX busy, retrying DHCP send\n");
+            }
+            cy_network_activity_notify(CY_NETWORK_ACTIVITY_TX);
+            cy_rtos_delay_milliseconds(5);
+            retry++;
+        }
+    } while ((status == ERR_INPROGRESS) && (retry < max_retries));
+
+    if (status != ERR_OK) {
+        printf("DHCP Server: udp_sendto_if_src error %d\n", (int)status);
+    }
     if (cy_rtos_set_mutex(&dhcp_mutex) != CY_RSLT_SUCCESS)
     {
         return CY_RSLT_NETWORK_DHCP_MUTEX_ERROR;

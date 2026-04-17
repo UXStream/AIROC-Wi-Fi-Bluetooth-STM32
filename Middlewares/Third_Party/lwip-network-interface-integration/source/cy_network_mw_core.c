@@ -291,22 +291,25 @@ void cy_network_process_ethernet_data(whd_interface_t iface, whd_buffer_t buf)
     uint16_t ethertype;
     struct netif *net_interface = NULL;
 
+    printf("cy_network_process_ethernet_data(): START role=%d ifidx=%d bsscfg=%d\n",
+        (int)iface->role, (int)iface->ifidx, (int)iface->bsscfgidx);
     cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_INFO, "%s(): START iface->role:[%d]\n", __FUNCTION__, iface->role );
 
-    if(iface->role == WHD_STA_ROLE)
-    {
+    if (iface->role == WHD_STA_ROLE || iface->role == (whd_interface_role_t)0 /* Unknown role reported in logs */) {
         net_interface = &sta_ip_handle;
         cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_DEBUG, "STA net_interface:[%p] \n", net_interface);
-    }
-    else if(iface->role == WHD_AP_ROLE)
-    {
+    } else if (iface->role == WHD_AP_ROLE || iface->role == WHD_P2P_ROLE) {
         net_interface = &ap_ip_handle;
-        cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_DEBUG, "AP net_interface:[%p] \n", net_interface);
-    }
-    else
-    {
+        cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_DEBUG, "AP/P2P net_interface:[%p] \n", net_interface);
+    } else {
+        cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "Unknown role %d, dropping packet\n", (int)iface->role);
         cy_buffer_release(buf, WHD_NETWORK_RX) ;
         return;
+    }
+
+    if (iface->ifidx == 1 && iface->role == (whd_interface_role_t)0) {
+        printf("cy_network: Forcing role 0/ifidx 1 to AP interface path\n");
+        net_interface = &ap_ip_handle;
     }
 
     ethertype = (uint16_t)(data[12] << 8 | data[13]);
@@ -364,14 +367,38 @@ static struct pbuf *pbuf_dup(const struct pbuf *orig)
 static err_t wifioutput(struct netif *iface, struct pbuf *p)
 {
     cy_network_interface_context *if_ctx;
+    uint8_t ready_retry = 0;
+    const uint8_t ready_max_retries = 40;
     if_ctx = (cy_network_interface_context *)iface->state;
 
     cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_DEBUG, "%s(): START \n", __FUNCTION__ );
 
-    if (whd_wifi_is_ready_to_transceive((whd_interface_t)if_ctx->hw_interface) != WHD_SUCCESS)
     {
-        cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "Wi-Fi is not ready, packet not sent\n");
-        return ERR_INPROGRESS ;
+        uint32_t whd_ready_ret = 0;
+        while ((whd_ready_ret = whd_wifi_is_ready_to_transceive((whd_interface_t)if_ctx->hw_interface)) != WHD_SUCCESS) {
+            if (ready_retry == 0U) {
+                printf("Wi-Fi not ready to transceive, retrying... (ret=0x%08x hw_if=%p idx=%u type=%u)\n",
+                    (unsigned)whd_ready_ret, (void*)if_ctx->hw_interface, (unsigned)if_ctx->iface_idx, (unsigned)if_ctx->iface_type);
+                // cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO,
+                //     "Wi-Fi not ready, waiting before TX (ret=0x%08x hw_if=%p idx=%u type=%u)\n",
+                //     (unsigned)whd_ready_ret, (void*)if_ctx->hw_interface, (unsigned)if_ctx->iface_idx, (unsigned)if_ctx->iface_type);
+            } else {
+                printf("Wi-Fi still not ready to transceive, retrying... (ret=0x%08x hw_if=%p idx=%u type=%u retry=%u)\n", (unsigned)whd_ready_ret, (void*)if_ctx->hw_interface, (unsigned)if_ctx->iface_idx, (unsigned)if_ctx->iface_type, (unsigned)ready_retry);
+                // cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_DEBUG,
+                //     "Wi-Fi readiness check returned 0x%08x retry=%u\n",
+                //     (unsigned)whd_ready_ret, (unsigned)ready_retry);
+            }
+
+            if (ready_retry >= ready_max_retries) {
+                printf("Wi-Fi not ready after %u retries, dropping packet (ret=0x%08x hw_if=%p idx=%u type=%u)\n",
+                    (unsigned)ready_retry, (unsigned)whd_ready_ret, (void*)if_ctx->hw_interface, (unsigned)if_ctx->iface_idx, (unsigned)if_ctx->iface_type);
+                // cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "Wi-Fi is not ready, packet not sent\n");
+                return ERR_INPROGRESS;
+            }
+
+            cy_rtos_delay_milliseconds(5);
+            ready_retry++;
+        }
     }
 
     struct pbuf *whd_buf = pbuf_dup(p);
@@ -387,7 +414,9 @@ static err_t wifioutput(struct netif *iface, struct pbuf *p)
     {
         activity_callback(true);
     }
-    whd_network_send_ethernet_data((whd_interface_t)if_ctx->hw_interface, whd_buf) ;
+    cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "Wi-Fi send: calling whd_network_send_ethernet_data hw_if=%p buf=%p\n",
+        (void*)if_ctx->hw_interface, (void*)whd_buf);
+    whd_network_send_ethernet_data((whd_interface_t)if_ctx->hw_interface, whd_buf);
 
     cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_DEBUG, "%s(): END \n", __FUNCTION__ );
 
@@ -548,6 +577,14 @@ static err_t wifiinit(struct netif *iface)
     iface->linkoutput = wifioutput;
     iface->mtu = WHD_LINK_MTU;
     iface->flags |= (NETIF_FLAG_BROADCAST | NETIF_FLAG_ETHARP | NETIF_FLAG_IGMP) ;
+
+    /* Miracast: Ensure DHCP broadcasts are NOT dropped by lwIP's IP stack
+     * before they reach our DHCP server instance. */
+    if (if_ctx->iface_type == CY_NETWORK_WIFI_AP_INTERFACE) {
+        iface->flags |= NETIF_FLAG_UP;
+        cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "P2P AP Interface: Set NETIF_FLAG_UP to allow DHCP packets\n");
+    }
+
 #if LWIP_IPV6_MLD
     iface->flags |= NETIF_FLAG_MLD6;
 #endif
@@ -1497,6 +1534,24 @@ cy_rslt_t cy_network_ip_up(cy_network_interface_context *iface)
 #if LWIP_IGMP
         igmp_start(LWIP_IP_HANDLE(interface_index));
 #endif
+        if (iface->hw_interface != NULL) {
+            uint8_t wait_count = 0;
+            const uint8_t wait_max = 200;
+
+            while (whd_wifi_is_ready_to_transceive((whd_interface_t)iface->hw_interface) != WHD_SUCCESS) {
+                if (wait_count == 0U) {
+                    cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "SoftAP not ready yet, waiting before DHCP server start\n");
+                }
+
+                if (wait_count >= wait_max) {
+                    cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "SoftAP not ready, cannot start DHCP server\n");
+                    return CY_RSLT_NETWORK_ERROR_STARTING_DHCP;
+                }
+
+                cy_rtos_delay_milliseconds(10);
+                wait_count++;
+            }
+        }
         /* Start the internal DHCP server */
         if((result = cy_lwip_dhcp_server_start(&internal_dhcp_server, iface))!= CY_RSLT_SUCCESS)
         {

@@ -1106,7 +1106,7 @@ err_t ethernetif_init(struct netif* netif)
     /*
      * Set up the information associated with sending the packets.
      */
-    netif->flags = NETIF_FLAG_ETHARP;
+    netif->flags = NETIF_FLAG_ETHARP | NETIF_FLAG_BROADCAST;
 
 #if ETH_BROADCAST_EN == 1
     netif->flags |= NETIF_FLAG_BROADCAST;
