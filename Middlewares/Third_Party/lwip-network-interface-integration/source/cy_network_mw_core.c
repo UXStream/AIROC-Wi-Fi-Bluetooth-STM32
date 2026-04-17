@@ -31,26 +31,33 @@
  * so agrees to indemnify Cypress against all liability.
 */
 
-#include <string.h>
-#include <stdint.h>
-#include "lwipopts.h"
+#include "lwip/dhcp.h"
+#include "lwip/dns.h"
+#include "lwip/etharp.h"
+#include "lwip/ethip6.h"
+#include "lwip/icmp.h"
+#include "lwip/igmp.h"
+#include "lwip/inet.h"
+#include "lwip/inet_chksum.h"
+#include "lwip/init.h"
+#include "lwip/nd6.h"
+#include "lwip/netdb.h"
 #include "lwip/netif.h"
 #include "lwip/netifapi.h"
-#include "lwip/init.h"
-#include "lwip/dhcp.h"
-#include "lwip/etharp.h"
-#include "lwip/tcpip.h"
-#include "lwip/ethip6.h"
-#include "lwip/igmp.h"
-#include "lwip/nd6.h"
-#include "netif/ethernet.h"
 #include "lwip/prot/autoip.h"
 #include "lwip/prot/dhcp.h"
-#include "lwip/dns.h"
-#include "lwip/inet_chksum.h"
-#include "lwip/icmp.h"
-#include "lwip/inet.h"
-#include "lwip/netdb.h"
+#include "lwip/prot/dns.h"
+#include "lwip/prot/ieee.h"
+#include "lwip/prot/ip.h"
+#include "lwip/prot/ip4.h"
+#include "lwip/prot/tcp.h"
+#include "lwip/prot/udp.h"
+#include "lwip/tcpip.h"
+#include "lwipopts.h"
+#include "netif/ethernet.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "cy_lwip_dhcp_server.h"
 #include "cy_network_mw_core.h"
@@ -117,6 +124,236 @@ int errno;
 
 #define ARP_WAIT_TIME_IN_MSEC                    (30000)
 #define ARP_CACHE_CHECK_INTERVAL_IN_MSEC         (5)
+
+#define MIRACAST_RTSP_PORT_LOG (7236u)
+#define MIRACAST_MDNS_PORT (5353u)
+
+static size_t miracast_decode_dns_name(const uint8_t* packet, uint16_t packet_len, uint16_t offset,
+    char* name_buf, size_t name_buf_len)
+{
+    size_t name_pos = 0u;
+    size_t cursor = offset;
+
+    if ((packet == NULL) || (name_buf == NULL) || (name_buf_len == 0u) || (offset >= packet_len)) {
+        return 0u;
+    }
+
+    while (cursor < packet_len) {
+        uint8_t label_len = packet[cursor++];
+
+        if (label_len == 0u) {
+            break;
+        }
+
+        if ((label_len & 0xC0u) != 0u) {
+            return 0u;
+        }
+
+        if ((cursor + (size_t)label_len) > packet_len) {
+            return 0u;
+        }
+
+        if (name_pos != 0u) {
+            if ((name_pos + 1u) >= name_buf_len) {
+                return 0u;
+            }
+            name_buf[name_pos++] = '.';
+        }
+
+        if ((name_pos + (size_t)label_len) >= name_buf_len) {
+            return 0u;
+        }
+
+        memcpy(&name_buf[name_pos], &packet[cursor], label_len);
+        name_pos += label_len;
+        cursor += label_len;
+    }
+
+    if (name_pos >= name_buf_len) {
+        return 0u;
+    }
+
+    name_buf[name_pos] = '\0';
+    return cursor - (size_t)offset;
+}
+
+static void miracast_log_mdns_packet(const char* direction, const uint8_t* data, uint16_t frame_size)
+{
+    if ((direction == NULL) || (data == NULL) || (frame_size < (uint16_t)(SIZEOF_ETH_HDR + sizeof(struct ip_hdr) + sizeof(struct udp_hdr) + SIZEOF_DNS_HDR))) {
+        return;
+    }
+
+    const struct ip_hdr* iphdr = (const struct ip_hdr*)(data + SIZEOF_ETH_HDR);
+    if (IPH_PROTO(iphdr) != IP_PROTO_UDP) {
+        return;
+    }
+
+    ip4_addr_t src_ip;
+    ip4_addr_t dst_ip;
+    char src_buf[IP4ADDR_STRLEN_MAX];
+    char dst_buf[IP4ADDR_STRLEN_MAX];
+
+    IPADDR_WORDALIGNED_COPY_FROM_IP4_ADDR_T(&src_ip, &iphdr->src);
+    IPADDR_WORDALIGNED_COPY_FROM_IP4_ADDR_T(&dst_ip, &iphdr->dest);
+
+    const uint16_t ip_header_len = (uint16_t)(IPH_HL(iphdr) * 4U);
+    if (frame_size < (uint16_t)(SIZEOF_ETH_HDR + ip_header_len + sizeof(struct udp_hdr) + SIZEOF_DNS_HDR)) {
+        return;
+    }
+
+    const struct udp_hdr* udphdr = (const struct udp_hdr*)(data + SIZEOF_ETH_HDR + ip_header_len);
+    const uint16_t src_port = lwip_ntohs(udphdr->src);
+    const uint16_t dst_port = lwip_ntohs(udphdr->dest);
+    if ((src_port != MIRACAST_MDNS_PORT) && (dst_port != MIRACAST_MDNS_PORT)) {
+        return;
+    }
+
+    const uint16_t udp_payload_offset = (uint16_t)(SIZEOF_ETH_HDR + ip_header_len + sizeof(struct udp_hdr));
+    const uint16_t udp_payload_len = (uint16_t)(frame_size - udp_payload_offset);
+    const uint8_t* dns_payload = data + udp_payload_offset;
+    const struct dns_hdr* dnshdr = (const struct dns_hdr*)dns_payload;
+    const uint16_t question_count = lwip_ntohs(dnshdr->numquestions);
+    const bool is_response = ((dnshdr->flags1 & 0x80u) != 0u);
+
+    if (question_count == 0u) {
+        printf("Miracast %s mDNS %s %s:%u -> %s:%u questions=0\n",
+            direction,
+            is_response ? "response" : "query",
+            ip4addr_ntoa_r(&src_ip, src_buf, sizeof(src_buf)),
+            (unsigned int)src_port,
+            ip4addr_ntoa_r(&dst_ip, dst_buf, sizeof(dst_buf)),
+            (unsigned int)dst_port);
+        return;
+    }
+
+    char qname[DNS_MAX_NAME_LENGTH + 1u];
+    size_t qname_len = miracast_decode_dns_name(dns_payload, udp_payload_len, SIZEOF_DNS_HDR, qname, sizeof(qname));
+    if (qname_len == 0u) {
+        printf("Miracast %s mDNS %s %s:%u -> %s:%u questions=%u (name decode failed)\n",
+            direction,
+            is_response ? "response" : "query",
+            ip4addr_ntoa_r(&src_ip, src_buf, sizeof(src_buf)),
+            (unsigned int)src_port,
+            ip4addr_ntoa_r(&dst_ip, dst_buf, sizeof(dst_buf)),
+            (unsigned int)dst_port,
+            (unsigned int)question_count);
+        return;
+    }
+
+    if (udp_payload_len < (uint16_t)(SIZEOF_DNS_HDR + qname_len + 4u)) {
+        return;
+    }
+
+    uint16_t qtype_net = 0u;
+    uint16_t qclass_net = 0u;
+    memcpy(&qtype_net, dns_payload + SIZEOF_DNS_HDR + qname_len, sizeof(qtype_net));
+    memcpy(&qclass_net, dns_payload + SIZEOF_DNS_HDR + qname_len + sizeof(qtype_net), sizeof(qclass_net));
+
+    printf("Miracast %s mDNS %s %s:%u -> %s:%u qname=%s qtype=%u qclass=0x%04x%s\n",
+        direction,
+        is_response ? "response" : "query",
+        ip4addr_ntoa_r(&src_ip, src_buf, sizeof(src_buf)),
+        (unsigned int)src_port,
+        ip4addr_ntoa_r(&dst_ip, dst_buf, sizeof(dst_buf)),
+        (unsigned int)dst_port,
+        qname,
+        (unsigned int)lwip_ntohs(qtype_net),
+        (unsigned int)lwip_ntohs(qclass_net),
+        ((lwip_ntohs(qclass_net) & 0x8000u) != 0u) ? " cache-flush" : "");
+}
+
+#if LWIP_IPV4
+static void log_miracast_rx_frame(whd_interface_t iface, const uint8_t* data, uint16_t frame_size,
+    uint16_t ethertype)
+{
+    if ((iface == NULL) || (iface->ifidx != 1u) || (frame_size < SIZEOF_ETH_HDR)) {
+        return;
+    }
+
+    if (ethertype == ETHTYPE_ARP) {
+        if (frame_size < (uint16_t)(SIZEOF_ETH_HDR + SIZEOF_ETHARP_HDR)) {
+            return;
+        }
+
+        const struct etharp_hdr* arp = (const struct etharp_hdr*)(data + SIZEOF_ETH_HDR);
+        ip4_addr_t sender_ip;
+        ip4_addr_t target_ip;
+        char sender_buf[IP4ADDR_STRLEN_MAX];
+        char target_buf[IP4ADDR_STRLEN_MAX];
+
+        IPADDR_WORDALIGNED_COPY_FROM_IP4_ADDR_T(&sender_ip, &arp->sipaddr);
+        IPADDR_WORDALIGNED_COPY_FROM_IP4_ADDR_T(&target_ip, &arp->dipaddr);
+
+        printf("Miracast RX ifidx=1 ARP op=%u %s -> %s\n",
+            (unsigned int)lwip_ntohs(arp->opcode),
+            ip4addr_ntoa_r(&sender_ip, sender_buf, sizeof(sender_buf)),
+            ip4addr_ntoa_r(&target_ip, target_buf, sizeof(target_buf)));
+        return;
+    }
+
+    if (ethertype == ETHTYPE_IP) {
+        if (frame_size < (uint16_t)(SIZEOF_ETH_HDR + sizeof(struct ip_hdr))) {
+            return;
+        }
+
+        const struct ip_hdr* iphdr = (const struct ip_hdr*)(data + SIZEOF_ETH_HDR);
+        ip4_addr_t src_ip;
+        ip4_addr_t dst_ip;
+        char src_buf[IP4ADDR_STRLEN_MAX];
+        char dst_buf[IP4ADDR_STRLEN_MAX];
+
+        IPADDR_WORDALIGNED_COPY_FROM_IP4_ADDR_T(&src_ip, &iphdr->src);
+        IPADDR_WORDALIGNED_COPY_FROM_IP4_ADDR_T(&dst_ip, &iphdr->dest);
+
+        if (IPH_PROTO(iphdr) == IP_PROTO_TCP) {
+            const uint16_t ip_header_len = (uint16_t)(IPH_HL(iphdr) * 4U);
+            if (frame_size < (uint16_t)(SIZEOF_ETH_HDR + ip_header_len + sizeof(struct tcp_hdr))) {
+                return;
+            }
+
+            const struct tcp_hdr* tcphdr = (const struct tcp_hdr*)(data + SIZEOF_ETH_HDR + ip_header_len);
+            const uint16_t src_port = lwip_ntohs(tcphdr->src);
+            const uint16_t dst_port = lwip_ntohs(tcphdr->dest);
+            const uint8_t tcp_flags = TCPH_FLAGS(tcphdr);
+
+            printf("Miracast RX ifidx=1 TCP %s:%u -> %s:%u flags=0x%02x%s%s%s\n",
+                ip4addr_ntoa_r(&src_ip, src_buf, sizeof(src_buf)),
+                (unsigned int)src_port,
+                ip4addr_ntoa_r(&dst_ip, dst_buf, sizeof(dst_buf)),
+                (unsigned int)dst_port,
+                (unsigned int)tcp_flags,
+                ((tcp_flags & TCP_SYN) != 0u) ? " SYN" : "",
+                ((tcp_flags & TCP_ACK) != 0u) ? " ACK" : "",
+                ((tcp_flags & TCP_RST) != 0u) ? " RST" : "");
+        } else if (IPH_PROTO(iphdr) == IP_PROTO_UDP) {
+            const uint16_t ip_header_len = (uint16_t)(IPH_HL(iphdr) * 4U);
+            if (frame_size < (uint16_t)(SIZEOF_ETH_HDR + ip_header_len + sizeof(struct udp_hdr))) {
+                return;
+            }
+
+            const struct udp_hdr* udphdr = (const struct udp_hdr*)(data + SIZEOF_ETH_HDR + ip_header_len);
+            const uint16_t src_port = lwip_ntohs(udphdr->src);
+            const uint16_t dst_port = lwip_ntohs(udphdr->dest);
+
+            printf("Miracast RX ifidx=1 UDP %s:%u -> %s:%u%s\n",
+                ip4addr_ntoa_r(&src_ip, src_buf, sizeof(src_buf)),
+                (unsigned int)src_port,
+                ip4addr_ntoa_r(&dst_ip, dst_buf, sizeof(dst_buf)),
+                (unsigned int)dst_port,
+                (dst_port == MIRACAST_MDNS_PORT) ? " mDNS" : "");
+
+            if ((src_port == MIRACAST_MDNS_PORT) || (dst_port == MIRACAST_MDNS_PORT)) {
+                miracast_log_mdns_packet("RX", data, frame_size);
+            }
+        } else {
+            printf("Miracast RX ifidx=1 IPv4 proto=%u %s -> %s\n",
+                (unsigned int)IPH_PROTO(iphdr),
+                ip4addr_ntoa_r(&src_ip, src_buf, sizeof(src_buf)),
+                ip4addr_ntoa_r(&dst_ip, dst_buf, sizeof(dst_buf)));
+        }
+    }
+}
+#endif
 
 #define DHCP_IP_ADDRESS_RESOLUTION_TIMEOUT_IN_MS (15000)
 #ifndef AUTO_IP_ADDRESS_RESOLUTION_TIMEOUT_IN_MS
@@ -288,14 +525,9 @@ static int cy_trng_reserve( void );
 void cy_network_process_ethernet_data(whd_interface_t iface, whd_buffer_t buf)
 {
     uint8_t *data = whd_buffer_get_current_piece_data_pointer(iface->whd_driver, buf);
+    uint16_t frame_size = whd_buffer_get_current_piece_size(iface->whd_driver, buf);
     uint16_t ethertype;
     struct netif *net_interface = NULL;
-
-    printf("cy_network_process_ethernet_data(): START role=%d ifidx=%d bsscfg=%d\n",
-        (int)iface->role, (int)iface->ifidx, (int)iface->bsscfgidx);
-#if 0
-    cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_INFO, "%s(): START iface->role:[%d]\n", __FUNCTION__, iface->role );
-#endif
 
     if (iface->role == WHD_STA_ROLE || iface->role == (whd_interface_role_t)0 /* Unknown role reported in logs */) {
         net_interface = &sta_ip_handle;
@@ -314,19 +546,32 @@ void cy_network_process_ethernet_data(whd_interface_t iface, whd_buffer_t buf)
     }
 
     if (iface->ifidx == 1 && iface->role == (whd_interface_role_t)0) {
-        printf("cy_network: Forcing role 0/ifidx 1 to AP interface path\n");
         net_interface = &ap_ip_handle;
+
+        /* Workaround: Miracast/P2P-GO brought up via low-level registrar/WPS
+         * often leaves the driver in an 'unknown' role or 'AP is DOWN' state.
+         * We force the role to P2P and the AP-up flag to true so that routing
+         * and ARP logic in the connection manager/middleware works correctly. */
+        iface->role = (whd_interface_role_t)3; /* WHD_P2P_ROLE */
+        extern void whd_wifi_set_ap_is_up(whd_driver_t whd_driver, whd_bool_t new_state);
+        whd_wifi_set_ap_is_up(iface->whd_driver, 1 /* WHD_TRUE */);
     }
 
     ethertype = (uint16_t)(data[12] << 8 | data[13]);
+
+#if LWIP_IPV4
+    log_miracast_rx_frame(iface, data, frame_size, ethertype);
+#endif
+
     if (ethertype == EAPOL_PACKET_TYPE)
     {
-        if( internal_eapol_packet_handler != NULL )
-        {
+        /* Workaround: If we are on ifidx 1 (P2P-GO) but the driver reports unknown role,
+         * we ignore the EAPOL handler (which is used for WPS/WCM) and pass it to lwIP
+         * if it's not actually for the registrar. However, EAPOL belongs to WHD mostly.
+         * For now, just ensure that IP packets (not EAPOL) always reach lwIP. */
+        if (internal_eapol_packet_handler != NULL && (iface->ifidx == 0 || iface->role != (whd_interface_role_t)0)) {
             internal_eapol_packet_handler(iface, buf);
-        }
-        else
-        {
+        } else {
             cy_buffer_release(buf, WHD_NETWORK_RX) ;
         }
     }
@@ -344,8 +589,20 @@ void cy_network_process_ethernet_data(whd_interface_t iface, whd_buffer_t buf)
         cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_DEBUG, "Send data up to LwIP \n");
 #endif
         /* If the interface is not yet set up, drop the packet */
-        if (net_interface->input == NULL || net_interface->input(buf, net_interface) != ERR_OK)
-        {
+        err_t lwip_err = ERR_OK;
+        bool input_available = (net_interface->input != NULL);
+
+        if (input_available) {
+            lwip_err = net_interface->input(buf, net_interface);
+        }
+
+        if (!input_available || lwip_err != ERR_OK) {
+            if (iface->ifidx == 1u) {
+                printf("Miracast RX drop ifidx=1 ethertype=0x%04x role=%d netif=%p input=%p err=%d\n",
+                    (unsigned int)ethertype, (int)iface->role, net_interface,
+                    input_available ? (void*)net_interface->input : NULL,
+                    (int)lwip_err);
+            }
             cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_ERR, "Drop packet before lwip \n");
             cy_buffer_release(buf, WHD_NETWORK_RX) ;
         }
@@ -424,9 +681,19 @@ static err_t wifioutput(struct netif *iface, struct pbuf *p)
     {
         activity_callback(true);
     }
+    if (if_ctx->iface_idx == 1u) {
+        miracast_log_mdns_packet("TX", (const uint8_t*)whd_buf->payload, (uint16_t)whd_buf->tot_len);
+    }
     cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_INFO, "Wi-Fi send: calling whd_network_send_ethernet_data hw_if=%p buf=%p\n",
         (void*)if_ctx->hw_interface, (void*)whd_buf);
-    whd_network_send_ethernet_data((whd_interface_t)if_ctx->hw_interface, whd_buf);
+    whd_result_t tx_result = whd_network_send_ethernet_data((whd_interface_t)if_ctx->hw_interface, whd_buf);
+    if (tx_result != WHD_SUCCESS) {
+        printf("Wi-Fi send failed hw_if=%p buf=%p result=%lu\n",
+            (void*)if_ctx->hw_interface,
+            (void*)whd_buf,
+            (unsigned long)tx_result);
+        return ERR_WOULDBLOCK;
+    }
 
     cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_DEBUG, "%s(): END \n", __FUNCTION__ );
 
