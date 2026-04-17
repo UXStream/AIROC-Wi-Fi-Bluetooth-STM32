@@ -293,14 +293,20 @@ void cy_network_process_ethernet_data(whd_interface_t iface, whd_buffer_t buf)
 
     printf("cy_network_process_ethernet_data(): START role=%d ifidx=%d bsscfg=%d\n",
         (int)iface->role, (int)iface->ifidx, (int)iface->bsscfgidx);
+#if 0
     cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_INFO, "%s(): START iface->role:[%d]\n", __FUNCTION__, iface->role );
+#endif
 
     if (iface->role == WHD_STA_ROLE || iface->role == (whd_interface_role_t)0 /* Unknown role reported in logs */) {
         net_interface = &sta_ip_handle;
+#if 0
         cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_DEBUG, "STA net_interface:[%p] \n", net_interface);
+#endif
     } else if (iface->role == WHD_AP_ROLE || iface->role == WHD_P2P_ROLE) {
         net_interface = &ap_ip_handle;
+#if 0
         cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_DEBUG, "AP/P2P net_interface:[%p] \n", net_interface);
+#endif
     } else {
         cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "Unknown role %d, dropping packet\n", (int)iface->role);
         cy_buffer_release(buf, WHD_NETWORK_RX) ;
@@ -334,7 +340,9 @@ void cy_network_process_ethernet_data(whd_interface_t iface, whd_buffer_t buf)
             activity_callback(false);
         }
 
+#if 0
         cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_DEBUG, "Send data up to LwIP \n");
+#endif
         /* If the interface is not yet set up, drop the packet */
         if (net_interface->input == NULL || net_interface->input(buf, net_interface) != ERR_OK)
         {
@@ -342,7 +350,9 @@ void cy_network_process_ethernet_data(whd_interface_t iface, whd_buffer_t buf)
             cy_buffer_release(buf, WHD_NETWORK_RX) ;
         }
     }
+#if 0
     cm_cy_log_msg( CYLF_MIDDLEWARE, CY_LOG_DEBUG, "%s(): END \n", __FUNCTION__ );
+#endif
 }
 
 /* Create a duplicate pbuf of the input pbuf */
@@ -393,10 +403,10 @@ static err_t wifioutput(struct netif *iface, struct pbuf *p)
                 printf("Wi-Fi not ready after %u retries, dropping packet (ret=0x%08x hw_if=%p idx=%u type=%u)\n",
                     (unsigned)ready_retry, (unsigned)whd_ready_ret, (void*)if_ctx->hw_interface, (unsigned)if_ctx->iface_idx, (unsigned)if_ctx->iface_type);
                 // cm_cy_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "Wi-Fi is not ready, packet not sent\n");
-                return ERR_INPROGRESS;
+                return ERR_WOULDBLOCK;
             }
 
-            cy_rtos_delay_milliseconds(5);
+            cy_rtos_delay_milliseconds(10);
             ready_retry++;
         }
     }

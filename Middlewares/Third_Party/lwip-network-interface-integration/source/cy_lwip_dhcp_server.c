@@ -1306,15 +1306,15 @@ static cy_rslt_t internal_udp_send(struct netconn* handler, cy_lwip_packet_t* pa
             nif,
             &nif->ip_addr);
 
-        if (status == ERR_INPROGRESS) {
+        if (status == ERR_WOULDBLOCK) {
             if (retry == 0U) {
                 printf("DHCP Server: Wi-Fi TX busy, retrying DHCP send\n");
             }
             cy_network_activity_notify(CY_NETWORK_ACTIVITY_TX);
-            cy_rtos_delay_milliseconds(5);
+            cy_rtos_delay_milliseconds(20);
             retry++;
         }
-    } while ((status == ERR_INPROGRESS) && (retry < max_retries));
+    } while ((status == ERR_WOULDBLOCK) && (retry < max_retries));
 
     if (status != ERR_OK) {
         printf("DHCP Server: udp_sendto_if_src error %d\n", (int)status);

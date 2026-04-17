@@ -37,6 +37,7 @@
 #include "whd_types.h"
 #include "whd_types_int.h"
 #include "whd_proto.h"
+#include "whd_wifi_p2p.h"
 #ifdef CYCFG_ULP_SUPPORT_ENABLED
 #include "cy_wcm.h"
 #endif
@@ -3862,6 +3863,9 @@ whd_result_t whd_wifi_is_ready_to_transceive(whd_interface_t ifp)
 
     CHECK_DRIVER_NULL(whd_driver);
 
+    printf("whd_wifi_is_ready_to_transceive: ifp=%p role=%d ifidx=%d bsscfg=%d\n",
+        (void*)ifp, (int)ifp->role, (int)ifp->ifidx, (int)ifp->bsscfgidx);
+
     switch (ifp->role)
     {
         case WHD_AP_ROLE:
@@ -3875,7 +3879,17 @@ whd_result_t whd_wifi_is_ready_to_transceive(whd_interface_t ifp)
         /* no break */
         /* Fall Through */
         case WHD_P2P_ROLE:
+            return (whd_wifi_p2p_is_go_up(whd_driver) == WHD_TRUE) ? WHD_SUCCESS : WHD_INTERFACE_NOT_UP;
+
         case WHD_INVALID_ROLE:
+            /* For Miracast/P2P, the interface might be role=0 (INVALID) while the firmware transitions.
+             * If bsscfgidx > 0, we treat it as an AP/P2P role check to allow the connection to proceed. */
+            if (ifp->bsscfgidx > 0)
+            {
+                return (whd_wifi_p2p_is_go_up(whd_driver) == WHD_TRUE || 
+                        whd_wifi_get_ap_is_up(whd_driver) == WHD_TRUE) ? WHD_SUCCESS : WHD_INTERFACE_NOT_UP;
+            }
+            return WHD_UNKNOWN_INTERFACE;
 
         default:
             return WHD_UNKNOWN_INTERFACE;

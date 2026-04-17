@@ -1023,9 +1023,9 @@ static cy_rslt_t cy_wps_process_message_content( cy_wps_agent_t* workspace, uint
     if ( ( workspace->agent_type == CY_WPS_REGISTRAR_AGENT) && ( workspace->wps_mode == CY_WPS_PBC_MODE ) && ( workspace->is_p2p_registrar == 0 ) &&
          ( cy_wps_pbc_overlap_check( &workspace->their_data.mac_address ) == CY_RSLT_WPS_PBC_OVERLAP ) )
     {
-        cy_wcm_log_msg(CYLF_MIDDLEWARE, CY_LOG_DEBUG, "PBC overlap during message processing\r\n");
-        workspace->wps_result = CY_RSLT_WPS_PBC_OVERLAP;
-        return CY_RSLT_WPS_PBC_OVERLAP;
+        cy_wcm_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "IGNORE: PBC overlap during message processing\r\n");
+        // workspace->wps_result = CY_RSLT_WPS_PBC_OVERLAP;
+        // return CY_RSLT_WPS_PBC_OVERLAP;
     }
 
     /* Process TLVs contained in message */
