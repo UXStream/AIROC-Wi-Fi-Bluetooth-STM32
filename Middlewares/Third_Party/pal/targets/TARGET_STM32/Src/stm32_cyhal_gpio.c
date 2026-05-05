@@ -402,7 +402,7 @@ void cyhal_gpio_register_callback(cyhal_gpio_t pin, cyhal_gpio_callback_data_t* 
     uint32_t pin_number = CYHAL_GET_PIN_NUMBER(CYHAL_GET_PIN(pin));
 
     /* Check the parameters */
-    if ((pin_number < CYHAL_MAX_EXTI_NUMBER) && (callback_data->callback != NULL))
+    if ((pin_number < CYHAL_MAX_EXTI_NUMBER) && callback_data && (callback_data->callback != NULL))
     {
         uint32_t savedIntrStatus = cyhal_system_critical_section_enter();
         _exti_callbacks_info[pin_number].callback      = callback_data->callback;
