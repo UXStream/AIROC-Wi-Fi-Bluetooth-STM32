@@ -209,7 +209,7 @@ struct icmp_packet
 cy_network_interface_context iface_context_database[CY_IFACE_MAX_HANDLE];
 static uint8_t iface_count = 0;
 static uint8_t connectivity_lib_init = 0;
-static bool is_tcp_initialized       = false;
+static bool is_tcp_initialized       = true;
 
 #ifdef COMPONENT_4390X
 static uint32_t prng_well512_state[CY_PRNG_WELL512_STATE_SIZE];
