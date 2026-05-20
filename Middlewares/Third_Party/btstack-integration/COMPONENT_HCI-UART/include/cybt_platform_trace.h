@@ -30,6 +30,10 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#define REROUTE_TRACE_LOGGING 1
+#if REROUTE_TRACE_LOGGING
+#include "log.h"
+#endif
 /**
  *  @addtogroup    platform_trace   Bluetooth Platform Trace
  *
@@ -107,6 +111,79 @@ extern cybt_platform_trace_cb_t trace_cb;
 
 extern void cybt_platform_log_print(const char *fmt_str, ...);
 
+#if REROUTE_TRACE_LOGGING
+
+// MAIN
+#define MAIN_TRACE_ERROR(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_MAIN] >= CYBT_TRACE_LEVEL_ERROR)   log_error(MODULE_BLE, fmt, ##__VA_ARGS__);}
+#define MAIN_TRACE_WARNING(fmt, ...) {if (trace_cb.trace_level[CYBT_TRACE_ID_MAIN] >= CYBT_TRACE_LEVEL_WARNING) log_warn(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define MAIN_TRACE_API(fmt, ...)     {if (trace_cb.trace_level[CYBT_TRACE_ID_MAIN] >= CYBT_TRACE_LEVEL_API)     log_info(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define MAIN_TRACE_EVENT(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_MAIN] >= CYBT_TRACE_LEVEL_EVENT)   log_info(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define MAIN_TRACE_DEBUG(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_MAIN] >= CYBT_TRACE_LEVEL_DEBUG)   log_debug(MODULE_BLE, fmt, ##__VA_ARGS__);}
+
+// SPIF
+#define SPIF_TRACE_ERROR(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_SPIF] >= CYBT_TRACE_LEVEL_ERROR)   log_error(MODULE_BLE, fmt, ##__VA_ARGS__);}
+#define SPIF_TRACE_WARNING(fmt, ...) {if (trace_cb.trace_level[CYBT_TRACE_ID_SPIF] >= CYBT_TRACE_LEVEL_WARNING) log_warn(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define SPIF_TRACE_API(fmt, ...)     {if (trace_cb.trace_level[CYBT_TRACE_ID_SPIF] >= CYBT_TRACE_LEVEL_API)     log_info(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define SPIF_TRACE_EVENT(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_SPIF] >= CYBT_TRACE_LEVEL_EVENT)   log_info(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define SPIF_TRACE_DEBUG(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_SPIF] >= CYBT_TRACE_LEVEL_DEBUG)   log_debug(MODULE_BLE, fmt, ##__VA_ARGS__);}
+
+// HCITXTASK
+#define HCITXTASK_TRACE_ERROR(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_HCITX_TASK] >= CYBT_TRACE_LEVEL_ERROR)   log_error(MODULE_BLE, fmt, ##__VA_ARGS__);}
+#define HCITXTASK_TRACE_WARNING(fmt, ...) {if (trace_cb.trace_level[CYBT_TRACE_ID_HCITX_TASK] >= CYBT_TRACE_LEVEL_WARNING) log_warn(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define HCITXTASK_TRACE_API(fmt, ...)     {if (trace_cb.trace_level[CYBT_TRACE_ID_HCITX_TASK] >= CYBT_TRACE_LEVEL_API)     log_info(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define HCITXTASK_TRACE_EVENT(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_HCITX_TASK] >= CYBT_TRACE_LEVEL_EVENT)   log_info(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define HCITXTASK_TRACE_DEBUG(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_HCITX_TASK] >= CYBT_TRACE_LEVEL_DEBUG)   log_debug(MODULE_BLE, fmt, ##__VA_ARGS__);}
+
+// HCIRXTASK
+#define HCIRXTASK_TRACE_ERROR(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_HCIRX_TASK] >= CYBT_TRACE_LEVEL_ERROR)   log_error(MODULE_BLE, fmt, ##__VA_ARGS__);}
+#define HCIRXTASK_TRACE_WARNING(fmt, ...) {if (trace_cb.trace_level[CYBT_TRACE_ID_HCIRX_TASK] >= CYBT_TRACE_LEVEL_WARNING) log_warn(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define HCIRXTASK_TRACE_API(fmt, ...)     {if (trace_cb.trace_level[CYBT_TRACE_ID_HCIRX_TASK] >= CYBT_TRACE_LEVEL_API)     log_info(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define HCIRXTASK_TRACE_EVENT(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_HCIRX_TASK] >= CYBT_TRACE_LEVEL_EVENT)   log_info(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define HCIRXTASK_TRACE_DEBUG(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_HCIRX_TASK] >= CYBT_TRACE_LEVEL_DEBUG)   log_debug(MODULE_BLE, fmt, ##__VA_ARGS__);}
+
+// HCIDRV
+#define HCIDRV_TRACE_ERROR(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_HCI_DRV] >= CYBT_TRACE_LEVEL_ERROR)   log_error(MODULE_BLE, fmt, ##__VA_ARGS__);}
+#define HCIDRV_TRACE_WARNING(fmt, ...) {if (trace_cb.trace_level[CYBT_TRACE_ID_HCI_DRV] >= CYBT_TRACE_LEVEL_WARNING) log_warn(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define HCIDRV_TRACE_API(fmt, ...)     {if (trace_cb.trace_level[CYBT_TRACE_ID_HCI_DRV] >= CYBT_TRACE_LEVEL_API)     log_info(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define HCIDRV_TRACE_EVENT(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_HCI_DRV] >= CYBT_TRACE_LEVEL_EVENT)   log_info(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define HCIDRV_TRACE_DEBUG(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_HCI_DRV] >= CYBT_TRACE_LEVEL_DEBUG)   log_debug(MODULE_BLE, fmt, ##__VA_ARGS__);}
+
+// HCILOG
+#define HCILOG_TRACE_ERROR(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_HCI_LOG] >= CYBT_TRACE_LEVEL_ERROR)   log_error(MODULE_BLE, fmt, ##__VA_ARGS__);}
+#define HCILOG_TRACE_WARNING(fmt, ...) {if (trace_cb.trace_level[CYBT_TRACE_ID_HCI_LOG] >= CYBT_TRACE_LEVEL_WARNING) log_warn(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define HCILOG_TRACE_API(fmt, ...)     {if (trace_cb.trace_level[CYBT_TRACE_ID_HCI_LOG] >= CYBT_TRACE_LEVEL_API)     log_info(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define HCILOG_TRACE_EVENT(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_HCI_LOG] >= CYBT_TRACE_LEVEL_EVENT)   log_info(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define HCILOG_TRACE_DEBUG(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_HCI_LOG] >= CYBT_TRACE_LEVEL_DEBUG)   log_debug(MODULE_BLE, fmt, ##__VA_ARGS__);}
+
+// MEM
+#define MEM_TRACE_ERROR(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_MEMORY] >= CYBT_TRACE_LEVEL_ERROR)   log_error(MODULE_BLE, fmt, ##__VA_ARGS__);}
+#define MEM_TRACE_WARNING(fmt, ...) {if (trace_cb.trace_level[CYBT_TRACE_ID_MEMORY] >= CYBT_TRACE_LEVEL_WARNING) log_warn(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define MEM_TRACE_API(fmt, ...)     {if (trace_cb.trace_level[CYBT_TRACE_ID_MEMORY] >= CYBT_TRACE_LEVEL_API)     log_info(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define MEM_TRACE_EVENT(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_MEMORY] >= CYBT_TRACE_LEVEL_EVENT)   log_info(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define MEM_TRACE_DEBUG(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_MEMORY] >= CYBT_TRACE_LEVEL_DEBUG)   log_debug(MODULE_BLE, fmt, ##__VA_ARGS__);}
+
+// PRM
+#define PRM_TRACE_ERROR(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_PRM] >= CYBT_TRACE_LEVEL_ERROR)   log_error(MODULE_BLE, fmt, ##__VA_ARGS__);}
+#define PRM_TRACE_WARNING(fmt, ...) {if (trace_cb.trace_level[CYBT_TRACE_ID_PRM] >= CYBT_TRACE_LEVEL_WARNING) log_warn(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define PRM_TRACE_API(fmt, ...)     {if (trace_cb.trace_level[CYBT_TRACE_ID_PRM] >= CYBT_TRACE_LEVEL_API)     log_info(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define PRM_TRACE_EVENT(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_PRM] >= CYBT_TRACE_LEVEL_EVENT)   log_info(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define PRM_TRACE_DEBUG(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_PRM] >= CYBT_TRACE_LEVEL_DEBUG)   log_debug(MODULE_BLE, fmt, ##__VA_ARGS__);}
+
+// STACK
+#define STACK_TRACE_ERROR(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_STACK] >= CYBT_TRACE_LEVEL_ERROR)   log_error(MODULE_BLE, fmt, ##__VA_ARGS__);}
+#define STACK_TRACE_WARNING(fmt, ...) {if (trace_cb.trace_level[CYBT_TRACE_ID_STACK] >= CYBT_TRACE_LEVEL_WARNING) log_warn(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define STACK_TRACE_API(fmt, ...)     {if (trace_cb.trace_level[CYBT_TRACE_ID_STACK] >= CYBT_TRACE_LEVEL_API)     log_info(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define STACK_TRACE_EVENT(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_STACK] >= CYBT_TRACE_LEVEL_EVENT)   log_info(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define STACK_TRACE_DEBUG(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_STACK] >= CYBT_TRACE_LEVEL_DEBUG)   log_debug(MODULE_BLE, fmt, ##__VA_ARGS__);}
+
+// APP
+#define APP_TRACE_ERROR(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_APP] >= CYBT_TRACE_LEVEL_ERROR)   log_error(MODULE_BLE, fmt, ##__VA_ARGS__);}
+#define APP_TRACE_WARNING(fmt, ...) {if (trace_cb.trace_level[CYBT_TRACE_ID_APP] >= CYBT_TRACE_LEVEL_WARNING) log_warn(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define APP_TRACE_API(fmt, ...)     {if (trace_cb.trace_level[CYBT_TRACE_ID_APP] >= CYBT_TRACE_LEVEL_API)     log_info(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define APP_TRACE_EVENT(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_APP] >= CYBT_TRACE_LEVEL_EVENT)   log_info(MODULE_BLE,  fmt, ##__VA_ARGS__);}
+#define APP_TRACE_DEBUG(fmt, ...)   {if (trace_cb.trace_level[CYBT_TRACE_ID_APP] >= CYBT_TRACE_LEVEL_DEBUG)   log_debug(MODULE_BLE, fmt, ##__VA_ARGS__);}
+
+#else
 #define MAIN_TRACE_ERROR(...)    {if (trace_cb.trace_level[CYBT_TRACE_ID_MAIN] >= CYBT_TRACE_LEVEL_ERROR) cybt_platform_log_print(__VA_ARGS__);}
 #define MAIN_TRACE_WARNING(...)  {if (trace_cb.trace_level[CYBT_TRACE_ID_MAIN] >= CYBT_TRACE_LEVEL_WARNING) cybt_platform_log_print(__VA_ARGS__);}
 #define MAIN_TRACE_API(...)      {if (trace_cb.trace_level[CYBT_TRACE_ID_MAIN] >= CYBT_TRACE_LEVEL_API) cybt_platform_log_print(__VA_ARGS__);}
@@ -166,6 +243,7 @@ extern void cybt_platform_log_print(const char *fmt_str, ...);
 #define APP_TRACE_API(...)      {if (trace_cb.trace_level[CYBT_TRACE_ID_APP] >= CYBT_TRACE_LEVEL_API) cybt_platform_log_print(__VA_ARGS__);}
 #define APP_TRACE_EVENT(...)    {if (trace_cb.trace_level[CYBT_TRACE_ID_APP] >= CYBT_TRACE_LEVEL_EVENT) cybt_platform_log_print(__VA_ARGS__);}
 #define APP_TRACE_DEBUG(...)    {if (trace_cb.trace_level[CYBT_TRACE_ID_APP] >= CYBT_TRACE_LEVEL_DEBUG) cybt_platform_log_print(__VA_ARGS__);}
+#endif
 
 
 /*****************************************************************************
