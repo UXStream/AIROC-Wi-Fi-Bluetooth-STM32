@@ -55,7 +55,7 @@ extern "C" {
  */
 #if !defined(CY_WIFI_THREAD_PRIORITY)
 #ifndef COMPONENT_CAT5
-#define CY_WIFI_THREAD_PRIORITY             (CY_RTOS_PRIORITY_HIGH)
+#define CY_WIFI_THREAD_PRIORITY             (CY_RTOS_PRIORITY_REALTIME - 1)
 #else
 #define CY_WIFI_THREAD_PRIORITY             (CY_RTOS_PRIORITY_MAX)
 #endif /* WHD_TO_TEST */
