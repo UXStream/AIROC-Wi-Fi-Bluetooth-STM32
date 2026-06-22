@@ -709,7 +709,7 @@ static void _stm32_cyhal_uart_rx_complete_callback(UART_HandleTypeDef* huart)
             obj->huart->RxISR = _stm32_cyhal_uart_rx_not_empty_irq_handler;
 
             /* Enable the UART Parity Error interrupt and Data Register Not Empty interrupt */
-            SET_BIT(obj->huart->Instance->CR1, USART_CR1_RXNEIE_RXFNEIE);
+            ATOMIC_SET_BIT(obj->huart->Instance->CR1, USART_CR1_RXNEIE_RXFNEIE);
         }
     }
 }
@@ -912,12 +912,12 @@ void cyhal_uart_enable_event(cyhal_uart_t* obj, cyhal_uart_event_t event,
             obj->huart->RxISR = _stm32_cyhal_uart_rx_not_empty_irq_handler;
 
             /* Enable the Data Register Not Empty interrupt */
-            SET_BIT(obj->huart->Instance->CR1, USART_CR1_RXNEIE_RXFNEIE);
+            ATOMIC_SET_BIT(obj->huart->Instance->CR1, USART_CR1_RXNEIE_RXFNEIE);
         }
         else
         {
             obj->irq &= (uint32_t) ~CYHAL_UART_IRQ_RX_NOT_EMPTY;
-            CLEAR_BIT(obj->huart->Instance->CR1, USART_CR1_RXNEIE_RXFNEIE);
+            ATOMIC_CLEAR_BIT(obj->huart->Instance->CR1, USART_CR1_RXNEIE_RXFNEIE);
         }
 
         /* Exit UART critical section */
