@@ -39,6 +39,7 @@
 #include "cybt_platform_task.h"
 #include "cybt_platform_trace.h"
 #include "cybt_platform_util.h"
+#include "platform_ulp.h"
 
 #if (!defined (CY_USING_HAL) && (CY_CFG_PWR_SYS_IDLE_MODE == CY_CFG_PWR_MODE_DEEPSLEEP))
 #include "mtb_syspm_callbacks.h"
@@ -521,7 +522,7 @@ cybt_result_t cybt_platform_hci_write(hci_packet_type_t type,
 
     cybt_platform_sleep_lock();
     cybt_platform_assert_bt_wake();
-
+    Platform_UlpOnPeripheralsActive(ulpPERIPHERAL_BLE_TX);
     cybt_result = platform_hal_uart_write_async_wrapper((void *) p_data,(size_t) length);
     CYBT_RSLT_CHECK(cybt_result);
     if(CYBT_SUCCESS == cybt_result)
@@ -531,7 +532,7 @@ cybt_result_t cybt_platform_hci_write(hci_packet_type_t type,
 
     cybt_platform_deassert_bt_wake();
     cybt_platform_sleep_unlock();
-
+    Platform_UlpOnPeripheralsInactive(ulpPERIPHERAL_BLE_TX);
     cy_rtos_set_mutex(&hci_uart_cb.tx_atomic);
 
     return cybt_result;
