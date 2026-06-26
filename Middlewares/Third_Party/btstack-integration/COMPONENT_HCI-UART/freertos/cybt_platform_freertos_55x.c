@@ -521,9 +521,9 @@ cybt_result_t cybt_platform_hci_write(hci_packet_type_t type,
         return  CYBT_ERR_HCI_GET_TX_MUTEX_FAILED;
     }
 
+    Platform_UlpOnPeripheralsActive(ulpPERIPHERAL_BLE_TX);
     cybt_platform_sleep_lock();
     cybt_platform_assert_bt_wake();
-    Platform_UlpOnPeripheralsActive(ulpPERIPHERAL_BLE_TX);
     cybt_result = platform_hal_uart_write_async_wrapper((void *) p_data,(size_t) length);
     CYBT_RSLT_CHECK(cybt_result);
     if(CYBT_SUCCESS == cybt_result)
