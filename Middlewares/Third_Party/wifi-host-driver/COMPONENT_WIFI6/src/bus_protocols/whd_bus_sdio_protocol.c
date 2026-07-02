@@ -1759,9 +1759,14 @@ whd_result_t whd_bus_sdio_enable_oob_intr(whd_driver_t whd_driver, whd_bool_t en
 {
     const whd_oob_config_t *config = &whd_driver->bus_priv->sdio_config.oob_config;
 #if (CYHAL_API_VERSION >= 2)
+    /* This is a bug, if we defined  CYBSP_WIFI_HOST_WAKE_IRQ_EVENT = CYHAL_GPIO_IRQ_BOTH, its not handled correctly*/
+#if(CY_WIFI_HOST_WAKE_IRQ_EVENT!=CYHAL_GPIO_IRQ_BOTH)
     const cyhal_gpio_event_t event =
         (config->is_falling_edge == WHD_TRUE) ? CYHAL_GPIO_IRQ_FALL : CYHAL_GPIO_IRQ_RISE;
-
+#else
+    const cyhal_gpio_event_t event =
+        (config->is_falling_edge == WHD_TRUE) ? CYHAL_GPIO_IRQ_FALL : CYHAL_GPIO_IRQ_BOTH;
+#endif
     cyhal_gpio_enable_event(config->host_oob_pin, event, config->intr_priority, (enable == WHD_TRUE) ? true : false);
 #else
     const cyhal_gpio_irq_event_t event =
