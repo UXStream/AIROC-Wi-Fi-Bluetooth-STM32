@@ -48,6 +48,7 @@ extern "C"
 #include "stdio.h"
 #include "string.h"
 #include "cyabs_rtos.h"
+#include "platform_ulp.h"
 
 #if defined(HAL_SD_MODULE_ENABLED)
 
@@ -414,6 +415,9 @@ cy_rslt_t cyhal_sdio_bulk_transfer(cyhal_sdio_t* obj, cyhal_sdio_transfer_type_t
 
         obj->hsd->ErrorCode = HAL_SD_ERROR_NONE;
         obj->hsd->State     = HAL_SD_STATE_BUSY;
+        /* The transfer blocks on a semaphore below, keep the idle task out of STOP meanwhile.
+         * STOP stops the SDMMC kernel clock and the transfer stalls. Cleared where State goes back to READY. */
+        Platform_UlpOnPeripheralsActive(ulpPERIPHERAL_WIFI_RX_TX);
 
         do
         {
@@ -462,6 +466,7 @@ cy_rslt_t cyhal_sdio_bulk_transfer(cyhal_sdio_t* obj, cyhal_sdio_transfer_type_t
             {
                 _CYHAL_SDIO_LOG("ERROR: Unaligned 4 byte buffers, buffer address 0x%x \n", data);
                 _cyhal_sdio_handle->State = HAL_SD_STATE_READY;
+                Platform_UlpOnPeripheralsInactive(ulpPERIPHERAL_WIFI_RX_TX);
                 return CYHAL_SDIO_RET_NO_SP_ERRORS;
             }
 
@@ -578,6 +583,7 @@ cy_rslt_t cyhal_sdio_bulk_transfer(cyhal_sdio_t* obj, cyhal_sdio_transfer_type_t
 
         /* Set the SD state to ready to be able to start again the process */
         _cyhal_sdio_handle->State = HAL_SD_STATE_READY;
+        Platform_UlpOnPeripheralsInactive(ulpPERIPHERAL_WIFI_RX_TX);
 
         /* This interrupt is disabled in interrupt handler so need to enable it here */
         if (0U != ((uint32_t)CYHAL_SDIO_CARD_INTERRUPT & obj->irq))
