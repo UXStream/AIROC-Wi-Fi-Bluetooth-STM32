@@ -991,6 +991,8 @@ typedef uint32_t whd_result_t;
 #define WHD_BUS_UP_FAIL                  WHD_RESULT_CREATE(1073)   /**< bus failed to come up */
 #define WHD_BUS_MEM_RESERVE_FAIL         WHD_RESULT_CREATE(1074)   /**< commonring reserve for write failed */
 #define WHD_NO_PKT_ID_AVAILABLE          WHD_RESULT_CREATE(1075)   /**< commonring reserve for write failed */
+#define WHD_AUTHENTICATION_FAILED        WHD_RESULT_CREATE(1076)   /**< Authentication failed, e.g. because of a wrong SAE password */
+#define WHD_ASSOCIATION_FAILED           WHD_RESULT_CREATE(1077)   /**< The firmware gave up the join without an authentication failure */
 
 #define WLAN_ENUM_OFFSET 2000            /**< WLAN enum offset for WHD_WLAN error processing */
 

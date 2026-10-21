@@ -470,7 +470,7 @@ extern cy_rslt_t wpa3_supplicant_sae_start (uint8_t *ssid, uint8_t ssid_len, uin
 #define JOIN_RETRY_ATTEMPTS                         (3)
 #define DEFAULT_RETRY_BACKOFF_TIMEOUT_IN_MS         (1000)
 #define MAX_RETRY_BACKOFF_TIMEOUT_IN_MS             (DEFAULT_RETRY_BACKOFF_TIMEOUT_IN_MS * 32)
-#define DHCP_TIMEOUT_COUNT                          (6000) /* 6000 times */
+#define DHCP_TIMEOUT_COUNT                          (1500) /* 1500 times */
 #define UNKNOWN_BAND_WIDTH                          (0)
 #define ARP_WAIT_TIME_IN_MSEC                       (30000)
 #define ARP_CACHE_CHECK_INTERVAL_IN_MSEC            (5)
@@ -482,7 +482,7 @@ extern cy_rslt_t wpa3_supplicant_sae_start (uint8_t *ssid, uint8_t ssid_len, uin
 #define PING_IF_NAME_LEN                            (6)
 #define PING_RESPONSE_LEN                           (64)
 #define SCAN_BSSID_ARR_LENGTH                       (50)
-#define MAX_SCAN_RETRY                              (20)
+#define MAX_SCAN_RETRY                              (3)
 
 /* Macro for 43012 statistics */
 #define WL_CNT_VER_30                               (30)
@@ -1570,7 +1570,7 @@ cy_rslt_t cy_wcm_connect_ap(cy_wcm_connect_params_t *connect_params, cy_wcm_ip_a
                 cy_rtos_delay_milliseconds(10);
                 /* Increment count for every 10 ms */
                 retry_count++;
-                /* Return DHCP Timeout Error when it exceeds 6000 * 10 ms = 60 seconds */
+                /* Return DHCP Timeout Error when it exceeds 1500 * 10 ms = 15 seconds */
                 if (retry_count > DHCP_TIMEOUT_COUNT)
                 {
                     cy_wcm_log_msg(CYLF_MIDDLEWARE, CY_LOG_ERR, "DHCP Timeout \n");
