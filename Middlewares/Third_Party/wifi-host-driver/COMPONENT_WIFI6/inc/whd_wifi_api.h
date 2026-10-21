@@ -942,6 +942,9 @@ extern whd_result_t whd_wifi_get_listen_interval(whd_interface_t ifp, whd_listen
  */
 extern whd_result_t whd_wifi_is_ready_to_transceive(whd_interface_t ifp);
 
+/** Returns the internal join status bits of the last join that failed, read before leaving the network */
+extern uint32_t whd_wifi_get_last_failed_join_status(void);
+
 /* Certification APIs */
 
 /** Retrieve the latest STA EDCF AC parameters

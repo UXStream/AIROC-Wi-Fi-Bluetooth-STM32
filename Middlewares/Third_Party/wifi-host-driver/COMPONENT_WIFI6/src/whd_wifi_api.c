@@ -70,6 +70,8 @@
 #define JOIN_EAPOL_KEY_G1_TIMEOUT   (uint32_t)(1 << 8)
 #define JOIN_EAPOL_KEY_FAILURE      (uint32_t)(1 << 9)
 #define JOIN_PROBE_RESPONSE         (uint32_t)(1 << 10)
+#define JOIN_AUTH_FAILED            (uint32_t)(1 << 11)
+#define JOIN_SSID_FAILED            (uint32_t)(1 << 12)
 
 #define JOIN_SECURITY_FLAGS_MASK    (JOIN_SECURITY_COMPLETE | JOIN_EAPOL_KEY_M1_TIMEOUT | JOIN_EAPOL_KEY_M3_TIMEOUT | \
                                      JOIN_EAPOL_KEY_G1_TIMEOUT | JOIN_EAPOL_KEY_FAILURE)
@@ -1286,6 +1288,7 @@ static void *whd_wifi_join_events_handler(whd_interface_t ifp, const whd_event_h
             }
             else
             {
+                whd_driver->internal_info.whd_join_status[event_header->bsscfgidx] |= JOIN_SSID_FAILED;
                 join_attempt_complete = WHD_TRUE;
             }
             break;
@@ -1310,6 +1313,8 @@ static void *whd_wifi_join_events_handler(whd_interface_t ifp, const whd_event_h
         case WLC_E_AUTH:
             if (event_header->status == WLC_E_STATUS_SUCCESS)
             {
+                /* The firmware may have retried after a failed authentication */
+                whd_driver->internal_info.whd_join_status[event_header->bsscfgidx] &= ~JOIN_AUTH_FAILED;
                 whd_driver->internal_info.whd_join_status[event_header->bsscfgidx] |= JOIN_AUTHENTICATED;
             }
             else if (event_header->status == WLC_E_STATUS_UNSOLICITED)
@@ -1319,6 +1324,7 @@ static void *whd_wifi_join_events_handler(whd_interface_t ifp, const whd_event_h
             else
             {
                 /* We cannot authenticate. Perhaps we're blocked or at the edge of a cell. */
+                whd_driver->internal_info.whd_join_status[event_header->bsscfgidx] |= JOIN_AUTH_FAILED;
                 join_attempt_complete = WHD_TRUE;
             }
             break;
@@ -1939,6 +1945,13 @@ static void whd_wifi_active_join_deinit(whd_interface_t ifp, cy_semaphore_t *sta
     WHD_WLAN_LET_SLEEP(whd_driver);
 }
 
+static uint32_t last_failed_join_status = 0;
+
+uint32_t whd_wifi_get_last_failed_join_status(void)
+{
+    return last_failed_join_status;
+}
+
 static uint32_t whd_wifi_join_wait_for_complete(whd_interface_t ifp, cy_semaphore_t *semaphore)
 {
     whd_result_t result;
@@ -1975,6 +1988,8 @@ static uint32_t whd_wifi_join_wait_for_complete(whd_interface_t ifp, cy_semaphor
             case WHD_EAPOL_KEY_PACKET_M3_TIMEOUT:
             case WHD_EAPOL_KEY_PACKET_G1_TIMEOUT:
             case WHD_EAPOL_KEY_FAILURE:
+            case WHD_AUTHENTICATION_FAILED:
+            case WHD_ASSOCIATION_FAILED:
                 done = WHD_TRUE;
                 break;
             case WHD_INVALID_JOIN_STATUS:
@@ -1996,8 +2011,8 @@ static uint32_t whd_wifi_join_wait_for_complete(whd_interface_t ifp, cy_semaphor
     {
         if ( (uint32_t)ifp->bsscfgidx < WHD_INTERFACE_MAX )
         {
-            WPRINT_WHD_ERROR( ("%s: join failed (err %" PRIu32 "), join status 0x%" PRIx32 "\n", __func__, result,
-                               ifp->whd_driver->internal_info.whd_join_status[ifp->bsscfgidx]) );
+            /* whd_wifi_leave clears the join status */
+            last_failed_join_status = ifp->whd_driver->internal_info.whd_join_status[ifp->bsscfgidx];
         }
         CHECK_RETURN(whd_wifi_leave(ifp) );
         WPRINT_WHD_INFO( ("%s: not ready to transceive (err %" PRIu32 "); left network\n", __func__, result) );
@@ -2035,7 +2050,14 @@ static uint32_t whd_wifi_check_join_status(whd_interface_t ifp)
         return WHD_EAPOL_KEY_FAILURE;
     }
 
-    switch (join_status)
+    /* WLC_E_SET_SSID with a failure ends the join, which otherwise reads as WHD_JOIN_IN_PROGRESS until
+     * DEFAULT_JOIN_ATTEMPT_TIMEOUT */
+    if ( (join_status & JOIN_SSID_FAILED) != 0 )
+    {
+        return ( (join_status & JOIN_AUTHENTICATED) == 0 ) ? WHD_AUTHENTICATION_FAILED : WHD_ASSOCIATION_FAILED;
+    }
+
+    switch (join_status & ~(JOIN_AUTH_FAILED | JOIN_SSID_FAILED))
     {
         case JOIN_NO_NETWORKS:
             return WHD_NETWORK_NOT_FOUND;
