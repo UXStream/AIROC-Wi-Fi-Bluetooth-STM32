@@ -2055,7 +2055,7 @@ static uint32_t whd_wifi_check_join_status(whd_interface_t ifp)
      * DEFAULT_JOIN_ATTEMPT_TIMEOUT */
     if ( (join_status & JOIN_SSID_FAILED) != 0 )
     {
-        return ( (join_status & JOIN_AUTHENTICATED) == 0 ) ? WHD_AUTHENTICATION_FAILED : WHD_ASSOCIATION_FAILED;
+        return ( (join_status & JOIN_AUTH_FAILED) != 0 ) ? WHD_AUTHENTICATION_FAILED : WHD_ASSOCIATION_FAILED;
     }
 
     switch (join_status & ~(JOIN_AUTH_FAILED | JOIN_SSID_FAILED))
