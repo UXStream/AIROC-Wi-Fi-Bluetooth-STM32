@@ -1279,6 +1279,7 @@ static void *whd_wifi_join_events_handler(whd_interface_t ifp, const whd_event_h
             if (event_header->status == WLC_E_STATUS_SUCCESS)
             {
                 /* SSID has been successfully set. */
+                whd_driver->internal_info.whd_join_status[event_header->bsscfgidx] &= ~JOIN_SSID_FAILED;
                 whd_driver->internal_info.whd_join_status[event_header->bsscfgidx] |= JOIN_SSID_SET;
             }
             /* We don't bail out on this event or things like WPS won't work if the AP is rebooting after configuration */
