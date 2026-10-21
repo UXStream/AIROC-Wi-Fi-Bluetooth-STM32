@@ -1984,7 +1984,7 @@ static uint32_t whd_wifi_join_wait_for_complete(whd_interface_t ifp, cy_semaphor
                 done = WHD_TRUE;
                 WPRINT_WHD_INFO( ("%s: WHD_NETWORK_NOT_FOUND!\n", __func__) );
                 break;
-            /* The 4-way handshake failed, so the join can't complete before DEFAULT_JOIN_ATTEMPT_TIMEOUT */
+            /* The join has failed, so there is no reason to continue */
             case WHD_EAPOL_KEY_PACKET_M1_TIMEOUT:
             case WHD_EAPOL_KEY_PACKET_M3_TIMEOUT:
             case WHD_EAPOL_KEY_PACKET_G1_TIMEOUT:
