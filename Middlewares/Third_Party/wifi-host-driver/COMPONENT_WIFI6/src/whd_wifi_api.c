@@ -1970,6 +1970,13 @@ static uint32_t whd_wifi_join_wait_for_complete(whd_interface_t ifp, cy_semaphor
                 done = WHD_TRUE;
                 WPRINT_WHD_INFO( ("%s: WHD_NETWORK_NOT_FOUND!\n", __func__) );
                 break;
+            /* The 4-way handshake failed, so the join can't complete before DEFAULT_JOIN_ATTEMPT_TIMEOUT */
+            case WHD_EAPOL_KEY_PACKET_M1_TIMEOUT:
+            case WHD_EAPOL_KEY_PACKET_M3_TIMEOUT:
+            case WHD_EAPOL_KEY_PACKET_G1_TIMEOUT:
+            case WHD_EAPOL_KEY_FAILURE:
+                done = WHD_TRUE;
+                break;
             case WHD_INVALID_JOIN_STATUS:
             done = (whd_bool_t)((current_time - start_time) >= DEFAULT_JOIN_RESPONSE_TIMEOUT);
                 if (done) WPRINT_WHD_INFO( ("%s: JOIN_RESPONSE_TIMEOUT!\n", __func__) );
@@ -1987,6 +1994,11 @@ static uint32_t whd_wifi_join_wait_for_complete(whd_interface_t ifp, cy_semaphor
 
     if (result != WHD_SUCCESS)
     {
+        if ( (uint32_t)ifp->bsscfgidx < WHD_INTERFACE_MAX )
+        {
+            WPRINT_WHD_ERROR( ("%s: join failed (err %" PRIu32 "), join status 0x%" PRIx32 "\n", __func__, result,
+                               ifp->whd_driver->internal_info.whd_join_status[ifp->bsscfgidx]) );
+        }
         CHECK_RETURN(whd_wifi_leave(ifp) );
         WPRINT_WHD_INFO( ("%s: not ready to transceive (err %" PRIu32 "); left network\n", __func__, result) );
     }
@@ -2003,7 +2015,27 @@ static uint32_t whd_wifi_check_join_status(whd_interface_t ifp)
         WPRINT_WHD_ERROR( ("%s: Bad interface %d\n", __FUNCTION__, ifp->bsscfgidx) );
         return WHD_INVALID_JOIN_STATUS;
     }
-    switch (whd_driver->internal_info.whd_join_status[ifp->bsscfgidx])
+    /* A failed 4-way handshake is often followed by a deauthentication, which clears JOIN_AUTHENTICATED and
+     * JOIN_LINK_READY. The combinations below then no longer match, so check the EAPOL failure bits on their own. */
+    uint32_t join_status = whd_driver->internal_info.whd_join_status[ifp->bsscfgidx];
+    if ( (join_status & JOIN_EAPOL_KEY_M1_TIMEOUT) != 0 )
+    {
+        return WHD_EAPOL_KEY_PACKET_M1_TIMEOUT;
+    }
+    if ( (join_status & JOIN_EAPOL_KEY_M3_TIMEOUT) != 0 )
+    {
+        return WHD_EAPOL_KEY_PACKET_M3_TIMEOUT;
+    }
+    if ( (join_status & JOIN_EAPOL_KEY_G1_TIMEOUT) != 0 )
+    {
+        return WHD_EAPOL_KEY_PACKET_G1_TIMEOUT;
+    }
+    if ( (join_status & JOIN_EAPOL_KEY_FAILURE) != 0 )
+    {
+        return WHD_EAPOL_KEY_FAILURE;
+    }
+
+    switch (join_status)
     {
         case JOIN_NO_NETWORKS:
             return WHD_NETWORK_NOT_FOUND;
