@@ -1238,7 +1238,7 @@ wiced_bool_t wiced_bt_l2cap_le_disconnect_rsp (uint16_t lcid);
  *  @param[in]      buf_len : p_data buffer size
  *
  *  @return         L2CAP_DATAWRITE_SUCCESS, if data accepted, else FALSE
- *                  L2CAP_DATAWRITE_CONGESTED, if data accepted and the channel is congested
+ *                  L2CAP_DATAWRITE_CONGESTED, if channel is congested (data is not accepted)
  *                  L2CAP_DATAWRITE_FAILED, if error
  */
 uint8_t wiced_bt_l2cap_le_data_write (uint16_t cid, uint8_t *p_data, uint16_t buf_len);
