@@ -187,6 +187,13 @@ void handle_hci_rx_acl(void)
 
     read_len = p_hci_acl_header->content_length;
 
+    /* Zero-length ACL packets are valid, but cybt_platform_hci_read logs a zero-length read as an error. They carry
+     * no data, so they are dropped here without reading. */
+    if (read_len == 0)
+    {
+        return;
+    }
+
     if ((read_len + sizeof(hci_acl_packet_header_t)) > CYBT_RX_MEM_MIN_SIZE)
     {
         HCIRXTASK_TRACE_ERROR("handle_hci_rx_acl(): read length too large (%d)", read_len);
