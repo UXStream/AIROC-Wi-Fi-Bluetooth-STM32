@@ -136,16 +136,21 @@ void handle_hci_rx_event(void)
         CY_ASSERT(0);
     }
 
-    result = cybt_platform_hci_read(HCI_PACKET_TYPE_EVENT,
-                                    p,
-                                    &read_len,
-                                    CY_RTOS_NEVER_TIMEOUT
-                                   );
-    if(CYBT_SUCCESS != result)
+    /* Some events, like HCI_PERIPHERAL_PAGE_RESP_TIMEOUT_EVT, have no parameters, and cybt_platform_hci_read rejects
+     * a zero-length read. The stack still needs those events, so only the read is skipped. */
+    if(read_len > 0)
     {
-        HCIRXTASK_TRACE_ERROR("handle_hci_rx_event(): read payload failed (0x%x)", result);
+        result = cybt_platform_hci_read(HCI_PACKET_TYPE_EVENT,
+                                        p,
+                                        &read_len,
+                                        CY_RTOS_NEVER_TIMEOUT
+                                       );
+        if(CYBT_SUCCESS != result)
+        {
+            HCIRXTASK_TRACE_ERROR("handle_hci_rx_event(): read payload failed (0x%x)", result);
 
-        return;
+            return;
+        }
     }
 
     wiced_bt_process_hci_events(p_hci_evt_packet,
