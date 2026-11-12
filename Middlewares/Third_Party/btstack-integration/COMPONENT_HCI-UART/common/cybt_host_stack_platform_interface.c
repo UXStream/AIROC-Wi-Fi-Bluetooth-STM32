@@ -311,11 +311,28 @@ wiced_result_t host_stack_send_sco_to_lower(uint8_t* p_sco_data, uint8_t len)
     }
 }
 
+#define STARTS_WITH(s, prefix) (strncmp((s), (prefix), sizeof(prefix) - 1) == 0)
+
+/* The A2DP source library traces three lines for each successful AVDT_WRITE_CFM_EVT, which is one per
+ * media packet sent while streaming. These lines flood the log and hide the other A2DP traces. They carry
+ * no information, because they only report that a packet was sent without error. */
+static wiced_bool_t is_a2dp_write_cfm_trace(const char *p_trace_buf)
+{
+    return (STARTS_WITH(p_trace_buf, "wiced_bt_a2dp_source_ctrl_cback: ") && strstr(p_trace_buf, " event=0xf ") != NULL) ||
+           STARTS_WITH(p_trace_buf, "[wiced_bt_a2dp_source_proc_stream_evt] event 15 ") ||
+           STARTS_WITH(p_trace_buf, "[wiced_bt_a2dp_source_proc_stream_evt] error code 0 ");
+}
+
 void host_stack_print_trace_log(char *p_trace_buf,
                                 int trace_buf_len,
                                 wiced_bt_trace_type_t trace_type
                                )
 {
+    if (trace_type == WICED_BT_TRACE_DEBUG && is_a2dp_write_cfm_trace(p_trace_buf))
+    {
+        return;
+    }
+
     switch(trace_type)
     {
         case WICED_BT_TRACE_ERROR:
