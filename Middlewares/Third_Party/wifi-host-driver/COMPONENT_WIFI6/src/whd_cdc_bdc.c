@@ -190,7 +190,13 @@ whd_result_t whd_cdc_send_ioctl(whd_interface_t ifp, cdc_command_type_t type, ui
      * But the data_length would be still used by the send_packet, we return error here for safe
      */
     if (data_length > WHD_IOCTL_MAX_TX_PKT_LEN)
+    {
+        /* Most other error returns in this function leak ioctl_mutex, the send buffer or the ioctl
+         * response buffer. A leaked ioctl_mutex blocks every later ioctl forever. */
+        CHECK_RETURN(whd_buffer_release(whd_driver, send_buffer_hnd, WHD_NETWORK_TX) );
+        CHECK_RETURN(cy_rtos_set_semaphore(&cdc_bdc_info->ioctl_mutex, WHD_FALSE) );
         return WHD_IOCTL_FAIL;
+    }
 
     send_packet = (control_header_t *)whd_buffer_get_current_piece_data_pointer(whd_driver, send_buffer_hnd);
     CHECK_PACKET_NULL(send_packet, WHD_NO_REGISTER_FUNCTION_POINTER);
