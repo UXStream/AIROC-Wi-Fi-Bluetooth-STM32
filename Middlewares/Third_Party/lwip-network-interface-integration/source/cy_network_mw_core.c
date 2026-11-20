@@ -349,7 +349,10 @@ static struct pbuf *pbuf_dup(const struct pbuf *orig)
     if (p != NULL)
     {
         pbuf_copy(p, orig);
-        p->flags = orig->flags;
+        /* The copy is a plain PBUF_RAM pbuf, so it must not inherit PBUF_FLAG_IS_CUSTOM.
+         * Nothing reads the other flags after the copy. They are kept to stay close to
+         * the AIROC original. */
+        p->flags = orig->flags & (u8_t)~PBUF_FLAG_IS_CUSTOM;
     }
     return p;
 }
