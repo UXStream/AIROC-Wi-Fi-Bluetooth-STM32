@@ -1528,6 +1528,21 @@ extern whd_result_t whd_wifi_read_wlan_log(whd_driver_t whd_drv, char *buffer, u
  */
 extern whd_result_t whd_wifi_print_whd_log(whd_driver_t whd_drv);
 
+/** Called on the WHD thread whenever the chip changes its flow-control bitmap. Must not block.
+ *
+ *  @param  bits           The priorities the chip accepts no data for, 0 when it accepts all
+ *  @param  arg            The arg passed to whd_wifi_set_flow_control_callback
+ */
+typedef void (*whd_flow_control_callback_t)(uint8_t bits, void *arg);
+
+/** Sets the function to call when the chip changes its flow-control bitmap, or NULL for none.
+ *
+ *  @param  whd_drv        Pointer to handle instance of the driver
+ *  @param  callback       The function to call
+ *  @param  arg            Passed to callback
+ */
+extern void whd_wifi_set_flow_control_callback(whd_driver_t whd_drv, whd_flow_control_callback_t callback, void *arg);
+
 /** Retrieves the ifidx from interface pointer.
  *  ifidx is a unique value and be used to identify a instance of tcp/ip stack
  *
