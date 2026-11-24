@@ -1543,6 +1543,21 @@ typedef void (*whd_flow_control_callback_t)(uint8_t bits, void *arg);
  */
 extern void whd_wifi_set_flow_control_callback(whd_driver_t whd_drv, whd_flow_control_callback_t callback, void *arg);
 
+/** The state of the queues for frames to the chip */
+typedef struct
+{
+    uint32_t queued;  /**< Frames waiting to be sent to the chip, data and control */
+    uint32_t dropped; /**< Data frames dropped because the queue for their access category was full */
+    uint8_t credits;  /**< Frames the chip accepts over the bus before it grants more */
+} whd_tx_stats_t;
+
+/** Gets the state of the queues for frames to the chip.
+ *
+ *  @param  whd_drv        Pointer to handle instance of the driver
+ *  @param  stats          Receives the state
+ */
+extern void whd_wifi_get_tx_stats(whd_driver_t whd_drv, whd_tx_stats_t *stats);
+
 /** Retrieves the ifidx from interface pointer.
  *  ifidx is a unique value and be used to identify a instance of tcp/ip stack
  *
