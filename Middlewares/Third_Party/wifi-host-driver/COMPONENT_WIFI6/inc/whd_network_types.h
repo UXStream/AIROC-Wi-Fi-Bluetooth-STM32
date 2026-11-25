@@ -47,8 +47,7 @@ extern "C"
 typedef enum
 {
     WHD_NETWORK_TX, /**< Transmit direction */
-    WHD_NETWORK_RX, /**< Recieve direction, data frames */
-    WHD_NETWORK_RX_CONTROL /**< Recieve direction, ioctl responses, events and backplane reads */
+    WHD_NETWORK_RX  /**< Recieve direction */
 } whd_buffer_dir_t;
 
 /**

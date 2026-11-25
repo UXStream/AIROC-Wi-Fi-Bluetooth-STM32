@@ -73,7 +73,6 @@
 #define SDIO_F2_WATERMARK     (8)
 
 #define INITIAL_READ   4
-#define SDPCM_HEADER_READ 12
 
 #define WHD_THREAD_POLL_TIMEOUT      (CY_RTOS_NEVER_TIMEOUT)
 
@@ -808,9 +807,7 @@ exit:
 whd_result_t whd_bus_sdio_read_frame(whd_driver_t whd_driver, whd_buffer_t *buffer)
 {
     uint16_t hwtag[8];
-    uint16_t header_read;
     uint16_t extra_space_required;
-    whd_buffer_dir_t direction;
     whd_result_t result;
     uint8_t *data = NULL;
 
@@ -853,12 +850,27 @@ whd_result_t whd_bus_sdio_read_frame(whd_driver_t whd_driver, whd_buffer_t *buff
         return WHD_SUCCESS;
     }
 
-    /* Read the rest of the SDPCM header, so the buffer can be allocated from the pool for its channel */
-    header_read = (hwtag[0] < (uint16_t)SDPCM_HEADER_READ) ? hwtag[0] : (uint16_t)SDPCM_HEADER_READ;
-    if (header_read > (uint16_t)INITIAL_READ)
+    /* Calculate the space we need to store entire packet */
+    if ( (hwtag[0] > (uint16_t)INITIAL_READ) )
     {
-        result = whd_bus_sdio_transfer(whd_driver, BUS_READ, WLAN_FUNCTION, 0, (uint16_t)(header_read - INITIAL_READ),
-                                       (uint8_t *)&hwtag[2], RESPONSE_NEEDED);
+        extra_space_required = (uint16_t)(hwtag[0] - (uint16_t)INITIAL_READ);
+    }
+    else
+    {
+        extra_space_required = 0;
+    }
+
+    /* Allocate a suitable buffer */
+    result = whd_host_buffer_get(whd_driver, buffer, WHD_NETWORK_RX,
+                                 (uint16_t)(INITIAL_READ + extra_space_required + sizeof(whd_buffer_header_t) ),
+                                 (whd_sdpcm_has_tx_packet(whd_driver) ? 0 : WHD_RX_BUF_TIMEOUT) );
+    if (result != WHD_SUCCESS)
+    {
+        /* Read out the first 12 bytes to get the bus credit information, 4 bytes are already read in hwtag */
+        whd_assert("Get buffer error",
+                   ( (result == WHD_BUFFER_UNAVAILABLE_TEMPORARY) || (result == WHD_BUFFER_UNAVAILABLE_PERMANENT) ) );
+        result = whd_bus_sdio_transfer(whd_driver, BUS_READ, WLAN_FUNCTION, 0, (uint16_t)8, (uint8_t *)&hwtag[2],
+                                       RESPONSE_NEEDED);
         if (result != WHD_SUCCESS)
         {
             /* ignore return - not much can be done if this fails */
@@ -866,41 +878,18 @@ whd_result_t whd_bus_sdio_read_frame(whd_driver_t whd_driver, whd_buffer_t *buff
             WPRINT_WHD_ERROR( ("Error during SDIO receive, %s failed at %d \n", __func__, __LINE__) );
             return WHD_SDIO_RX_FAIL;
         }
-    }
-    else
-    {
-        header_read = (uint16_t)INITIAL_READ;
-    }
-
-    /* Byte 5 is the SDPCM channel_and_flags field */
-    direction = ( (header_read == (uint16_t)SDPCM_HEADER_READ) &&
-                  ( (((uint8_t *)hwtag)[5] & 0x0f) != (uint8_t)DATA_HEADER ) ) ? WHD_NETWORK_RX_CONTROL : WHD_NETWORK_RX;
-
-    extra_space_required = (hwtag[0] > header_read) ? (uint16_t)(hwtag[0] - header_read) : (uint16_t)0;
-
-    /* Allocate a suitable buffer */
-    result = whd_host_buffer_get(whd_driver, buffer, direction,
-                                 (uint16_t)(header_read + extra_space_required + sizeof(whd_buffer_header_t) ),
-                                 (whd_sdpcm_has_tx_packet(whd_driver) ? 0 : WHD_RX_BUF_TIMEOUT) );
-    if (result != WHD_SUCCESS)
-    {
-        whd_assert("Get buffer error",
-                   ( (result == WHD_BUFFER_UNAVAILABLE_TEMPORARY) || (result == WHD_BUFFER_UNAVAILABLE_PERMANENT) ) );
         result = whd_bus_sdio_abort_read(whd_driver, WHD_FALSE);
         whd_assert("Read-abort failed", result == WHD_SUCCESS);
         REFERENCE_DEBUG_ONLY_VARIABLE(result);
 
-        if (header_read == (uint16_t)SDPCM_HEADER_READ)
-        {
-            whd_sdpcm_update_credit(whd_driver, (uint8_t *)hwtag);
-        }
+        whd_sdpcm_update_credit(whd_driver, (uint8_t *)hwtag);
         WPRINT_WHD_ERROR( ("Failed to allocate a buffer to receive into, %s failed at %d \n", __func__, __LINE__) );
         return WHD_RX_BUFFER_ALLOC_FAIL;
     }
     data = whd_buffer_get_current_piece_data_pointer(whd_driver, *buffer);
     CHECK_PACKET_NULL(data, WHD_NO_REGISTER_FUNCTION_POINTER);
     /* Copy the data already read */
-    whd_mem_memcpy(data + sizeof(whd_buffer_header_t), hwtag, (size_t)header_read);
+    whd_mem_memcpy(data + sizeof(whd_buffer_header_t), hwtag, (size_t)INITIAL_READ);
 
     /* Read the rest of the data */
     if (extra_space_required > 0)
@@ -909,7 +898,7 @@ whd_result_t whd_bus_sdio_read_frame(whd_driver_t whd_driver, whd_buffer_t *buff
         CHECK_PACKET_NULL(data, WHD_NO_REGISTER_FUNCTION_POINTER);
         result = whd_bus_sdio_transfer(whd_driver, BUS_READ, WLAN_FUNCTION, 0, extra_space_required,
                                        data + sizeof(whd_buffer_header_t) +
-                                       header_read, RESPONSE_NEEDED);
+                                       INITIAL_READ, RESPONSE_NEEDED);
 
         if (result != WHD_SUCCESS)
         {

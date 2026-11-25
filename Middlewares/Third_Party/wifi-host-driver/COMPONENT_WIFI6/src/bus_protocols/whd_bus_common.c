@@ -340,7 +340,7 @@ whd_result_t whd_bus_transfer_backplane_bytes(whd_driver_t whd_driver, whd_bus_t
     uint32_t trans_addr;
     whd_result_t result;
 
-    result = whd_host_buffer_get(whd_driver, &pkt_buffer, (direction == BUS_READ) ? WHD_NETWORK_RX_CONTROL : WHD_NETWORK_TX,
+    result = whd_host_buffer_get(whd_driver, &pkt_buffer, (direction == BUS_READ) ? WHD_NETWORK_RX : WHD_NETWORK_TX,
                                  ( uint16_t )(whd_bus_get_max_transfer_size(whd_driver) +
                                               whd_bus_backplane_read_padd_size(
                                                   whd_driver) + MAX_BUS_HEADER_SIZE), WHD_BACKPLAIN_BUF_TIMEOUT);
