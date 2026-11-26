@@ -253,6 +253,7 @@ whd_result_t whd_sdpcm_init(whd_driver_t whd_driver)
         sdpcm_info->npkt_in_q[ac] = 0;
     }
     sdpcm_info->totpkt_in_q = 0;
+    sdpcm_info->npkt_dropped = 0;
 
     whd_sdpcm_bus_vars_init(whd_driver);
 
@@ -635,6 +636,7 @@ whd_result_t whd_send_to_bus(whd_driver_t whd_driver, whd_buffer_t buffer,
 
     if ( (header_type == DATA_HEADER) && (sdpcm_info->npkt_in_q[ac] > AC_QUEUE_SIZE) )
     {
+        sdpcm_info->npkt_dropped++;
         result = whd_buffer_release(whd_driver, buffer, WHD_NETWORK_TX);
         if (result != WHD_SUCCESS)
         {
@@ -694,6 +696,13 @@ static void whd_sdpcm_set_next_buffer_in_queue(whd_driver_t whd_driver, whd_buff
     whd_buffer_header_t *packet =
         (whd_buffer_header_t *)whd_buffer_get_current_piece_data_pointer(whd_driver, prev_buffer);
     packet->queue_next = buffer;
+}
+
+void whd_wifi_get_tx_stats(whd_driver_t whd_driver, whd_tx_stats_t *stats)
+{
+    stats->queued = whd_driver->sdpcm_info.totpkt_in_q;
+    stats->dropped = whd_driver->sdpcm_info.npkt_dropped;
+    stats->credits = whd_sdpcm_get_available_credits(whd_driver);
 }
 
 #endif /* PROTO_MSGBUF */

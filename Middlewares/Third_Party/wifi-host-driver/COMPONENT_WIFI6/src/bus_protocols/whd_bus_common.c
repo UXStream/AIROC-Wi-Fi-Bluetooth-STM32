@@ -34,6 +34,7 @@
 #include "whd_resource_if.h"
 #include "whd_resource_api.h"
 #include "whd_types_int.h"
+#include "whd_wifi_api.h"
 
 #ifdef DOWNLOAD_RAM_BOOTLOADER
 #include "resources.h"
@@ -70,6 +71,10 @@ struct whd_bus_common_info
     uint32_t backplane_window_current_base_address;
     whd_bool_t bus_flow_control;
     volatile whd_bool_t resource_download_abort;
+
+    uint8_t flow_control_bits;
+    whd_flow_control_callback_t flow_control_callback;
+    void *flow_control_callback_arg;
 };
 
 /******************************************************
@@ -97,15 +102,32 @@ void whd_bus_set_state(whd_driver_t whd_driver, whd_bool_t state)
 
 whd_result_t whd_bus_set_flow_control(whd_driver_t whd_driver, uint8_t value)
 {
+    struct whd_bus_common_info *bus_common = whd_driver->bus_common_info;
+
     if (value != 0)
     {
-        whd_driver->bus_common_info->bus_flow_control = WHD_TRUE;
+        bus_common->bus_flow_control = WHD_TRUE;
     }
     else
     {
-        whd_driver->bus_common_info->bus_flow_control = WHD_FALSE;
+        bus_common->bus_flow_control = WHD_FALSE;
+    }
+
+    if (value != bus_common->flow_control_bits)
+    {
+        bus_common->flow_control_bits = value;
+        if (bus_common->flow_control_callback != NULL)
+        {
+            bus_common->flow_control_callback(value, bus_common->flow_control_callback_arg);
+        }
     }
     return WHD_SUCCESS;
+}
+
+void whd_wifi_set_flow_control_callback(whd_driver_t whd_driver, whd_flow_control_callback_t callback, void *arg)
+{
+    whd_driver->bus_common_info->flow_control_callback_arg = arg;
+    whd_driver->bus_common_info->flow_control_callback = callback;
 }
 
 whd_bool_t whd_bus_is_flow_controlled(whd_driver_t whd_driver)
@@ -137,6 +159,10 @@ void whd_bus_common_info_init(whd_driver_t whd_driver)
         bus_common->bus_flow_control = WHD_FALSE;
 
         bus_common->resource_download_abort = WHD_FALSE;
+
+        bus_common->flow_control_bits = 0;
+        bus_common->flow_control_callback = NULL;
+        bus_common->flow_control_callback_arg = NULL;
     }
     else
     {

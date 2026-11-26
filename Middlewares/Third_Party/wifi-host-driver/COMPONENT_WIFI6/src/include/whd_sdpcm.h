@@ -70,6 +70,7 @@ typedef struct whd_sdpcm_info
     whd_buffer_t send_queue_tail[5];
     uint32_t npkt_in_q[5]; /** 4 AC queues + 1 Contol queue(IOVAR/IOCTLs) */
     uint32_t totpkt_in_q;
+    uint32_t npkt_dropped;
 } whd_sdpcm_info_t;
 
 typedef struct

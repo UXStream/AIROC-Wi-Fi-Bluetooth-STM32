@@ -1528,6 +1528,43 @@ extern whd_result_t whd_wifi_read_wlan_log(whd_driver_t whd_drv, char *buffer, u
  */
 extern whd_result_t whd_wifi_print_whd_log(whd_driver_t whd_drv);
 
+/** Called on the WHD thread whenever the chip changes its flow-control bitmap. Must not block.
+ *  Turning Wi-Fi on also calls it once on the calling thread, before the WHD thread starts, when it
+ *  resets a nonzero bitmap to 0.
+ *
+ *  @param  bits           The priorities the chip accepts no data for, 0 when it accepts all
+ *  @param  arg            The arg passed to whd_wifi_set_flow_control_callback
+ */
+typedef void (*whd_flow_control_callback_t)(uint8_t bits, void *arg);
+
+/** Sets the function to call when the chip changes its flow-control bitmap, or NULL for none.
+ *  The WHD thread reads the callback without a lock, so set it once and don't replace or clear it
+ *  while Wi-Fi is on.
+ *
+ *  @param  whd_drv        Pointer to handle instance of the driver
+ *  @param  callback       The function to call
+ *  @param  arg            Passed to callback
+ */
+extern void whd_wifi_set_flow_control_callback(whd_driver_t whd_drv, whd_flow_control_callback_t callback, void *arg);
+
+#ifndef PROTO_MSGBUF
+/** The state of the queues for frames to the chip. The fields are read without a lock and are
+ *  meant for diagnostics. */
+typedef struct
+{
+    uint32_t queued;  /**< Frames waiting to be sent to the chip, data and control */
+    uint32_t dropped; /**< Data frames dropped because the queue for their access category was full */
+    uint8_t credits;  /**< Frames the chip accepts over the bus before it grants more */
+} whd_tx_stats_t;
+
+/** Gets the state of the queues for frames to the chip.
+ *
+ *  @param  whd_drv        Pointer to handle instance of the driver
+ *  @param  stats          Receives the state
+ */
+extern void whd_wifi_get_tx_stats(whd_driver_t whd_drv, whd_tx_stats_t *stats);
+#endif /* PROTO_MSGBUF */
+
 /** Retrieves the ifidx from interface pointer.
  *  ifidx is a unique value and be used to identify a instance of tcp/ip stack
  *
